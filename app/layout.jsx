@@ -1,0 +1,14 @@
+import "./globals.css";
+
+export const metadata = {
+  title: "Terreno · CRM Imobiliário",
+  description: "Sistema imobiliário para gestão de loteamentos, lotes e vendas.",
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="pt-BR">
+      <body>{children}</body>
+    </html>
+  );
+}
