@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Header, Sidebar } from "./Chrome";
 import { Dashboard } from "./Dashboard";
 import { LotCard } from "./LotCard";
@@ -24,6 +25,7 @@ import {
   updateLoteStatus,
 } from "../lib/api";
 import { fmtBRL, fmtBRLShort, statusLabel } from "../lib/data";
+import { useAuth } from "../context/AuthContext";
 
 const TWEAK_DEFAULTS = {
   mapTheme: "claro",
@@ -34,6 +36,8 @@ const TWEAK_DEFAULTS = {
 };
 
 export default function ImobiliariaApp() {
+  const { user, logout } = useAuth();
+  const router = useRouter();
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [view, setView] = useState("dashboard");
   const [activeLoteamentoId, setActiveLoteamentoId] = useState(null);
@@ -47,6 +51,16 @@ export default function ImobiliariaApp() {
   const [toast, setToast] = useState(null);
 
   const mapContainerRef = useRef(null);
+
+  // Ouve evento de sessão expirada emitido pelo api.js
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout();
+      router.replace("/login");
+    };
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
+  }, [logout, router]);
 
   // ── Fetch inicial e refresh ─────────────────────────────────────────────
 
@@ -229,6 +243,8 @@ export default function ImobiliariaApp() {
             view={view}
             loteamentoNome={loteamento?.nome}
             onBack={onBackToDash}
+            userEmail={user?.email}
+            onLogout={() => { logout(); router.replace('/login'); }}
           />
         )}
         <div className="content">

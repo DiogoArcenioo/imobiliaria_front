@@ -63,7 +63,7 @@ function NavItem({ item, iconPath, active, onClick }) {
   );
 }
 
-export const Header = ({ view, loteamentoNome, onBack }) => {
+export const Header = ({ view, loteamentoNome, onBack, userEmail, onLogout }) => {
   return (
     <header className="topbar">
       <div className="tb-left">
@@ -92,6 +92,34 @@ export const Header = ({ view, loteamentoNome, onBack }) => {
         </svg>
         <input placeholder="Buscar loteamentos e lotes..." />
       </div>
+      {onLogout && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 12 }}>
+          {userEmail && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {userEmail}
+            </span>
+          )}
+          <button
+            onClick={onLogout}
+            title="Sair"
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--border, #334155)',
+              borderRadius: 6,
+              color: 'var(--text-muted, #94a3b8)',
+              cursor: 'pointer',
+              padding: '4px 10px',
+              fontSize: '0.75rem',
+              display: 'flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M11 11l3-3-3-3M14 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Sair
+          </button>
+        </div>
+      )}
     </header>
   );
 };
