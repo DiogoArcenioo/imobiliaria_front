@@ -136,43 +136,95 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
             transition: isDragging ? 'none' : 'transform 0.18s ease-out',
           }}
         >
-          {/* Background subtle grid for satellite feel */}
-          {mapTheme === 'satelite' && (
-            <defs>
+          <defs>
+            <pattern id="mv-fundo" patternUnits="userSpaceOnUse" width="512" height="512">
+              <image href="/textures/fundo.jpg" x="0" y="0" width="512" height="512" />
+            </pattern>
+            <pattern id="mv-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M20 0L0 0L0 20" fill="none" stroke="rgba(180,210,255,0.13)" strokeWidth="0.5"/>
+            </pattern>
+            <pattern id="mv-grid-big" width="100" height="100" patternUnits="userSpaceOnUse">
+              <path d="M100 0L0 0L0 100" fill="none" stroke="rgba(180,210,255,0.26)" strokeWidth="0.9"/>
+            </pattern>
+            <pattern id="road-asphalt" patternUnits="userSpaceOnUse" width="80" height="80">
+              <rect width="80" height="80" fill="#4a4d4f"/>
+              <circle cx="12" cy="18" r="1" fill="#6a6d6f" opacity="0.45"/>
+              <circle cx="42" cy="9" r="1.2" fill="#727577" opacity="0.35"/>
+              <circle cx="67" cy="33" r="0.8" fill="#808385" opacity="0.3"/>
+              <circle cx="28" cy="61" r="1" fill="#75787a" opacity="0.35"/>
+              <circle cx="18" cy="42" r="1.3" fill="#2e3032" opacity="0.45"/>
+              <circle cx="54" cy="57" r="1" fill="#343638" opacity="0.4"/>
+              <circle cx="72" cy="70" r="0.9" fill="#292b2d" opacity="0.35"/>
+              <path d="M8 70 L18 64 L24 67" stroke="#2b2d2f" strokeWidth="1" opacity="0.25" fill="none"/>
+              <path d="M50 25 L57 30 L63 28" stroke="#2f3133" strokeWidth="1" opacity="0.25" fill="none"/>
+            </pattern>
+            <pattern id="road-sidewalk" patternUnits="userSpaceOnUse" width="50" height="50">
+              <rect width="50" height="50" fill="#d8d5ca"/>
+              <path d="M0 0 H50 M0 25 H50 M0 50 H50" stroke="#bdb8aa" strokeWidth="1" opacity="0.8" fill="none"/>
+              <path d="M0 0 V50 M25 0 V50 M50 0 V50" stroke="#bdb8aa" strokeWidth="1" opacity="0.8" fill="none"/>
+              <circle cx="12" cy="14" r="0.8" fill="#aaa596" opacity="0.5"/>
+              <circle cx="35" cy="31" r="0.7" fill="#aaa596" opacity="0.4"/>
+            </pattern>
+            <pattern id="lake-texture" patternUnits="userSpaceOnUse" width="512" height="512">
+              <image href="/textures/lago.jpg" x="0" y="0" width="512" height="512" />
+            </pattern>
+            <pattern id="park-texture" patternUnits="userSpaceOnUse" width="512" height="512">
+              <image href="/textures/praca.jpg" x="0" y="0" width="512" height="512" />
+            </pattern>
+            {mapTheme === 'satelite' && (
               <pattern id="texGrid" width="14" height="14" patternUnits="userSpaceOnUse">
                 <path d="M0 0L14 0M0 0L0 14" stroke={T.gridLine} strokeWidth="0.5" />
               </pattern>
-            </defs>
+            )}
+          </defs>
+          {/* Background */}
+          {mapTheme === 'claro' ? (
+            <>
+              <rect x="0" y="0" width={vw} height={vh} fill="url(#mv-fundo)" />
+              <rect x="0" y="0" width={vw} height={vh} fill="url(#mv-grid)" />
+              <rect x="0" y="0" width={vw} height={vh} fill="url(#mv-grid-big)" />
+            </>
+          ) : (
+            <>
+              <rect x="0" y="0" width={vw} height={vh} fill={T.bg} />
+              <rect x="0" y="0" width={vw} height={vh} fill={T.greenFill} opacity="0.18" />
+              {mapTheme === 'satelite' && <rect width={vw} height={vh} fill="url(#texGrid)" />}
+            </>
           )}
-          {mapTheme === 'satelite' && <rect width={vw} height={vh} fill="url(#texGrid)" />}
 
-          {/* Background areas (greens) */}
-          <rect x="0" y="0" width={vw} height={vh} fill={T.bg} />
-          {/* Soft inner area band */}
-          <rect x="0" y="0" width={vw} height={vh} fill={T.greenFill} opacity="0.18" />
-
-          <RoadSurface loteamento={loteamento} theme={T} />
-
-          {/* Center dashed line on main roads */}
-          {loteamento.roads?.filter(r => r.label).map((r, i) => {
-            const isVertical = r.h > r.w;
-            return (
-              <line
-                key={`dash-${i}`}
-                x1={isVertical ? r.x + r.w/2 : r.x + 10}
-                y1={isVertical ? r.y + 10 : r.y + r.h/2}
-                x2={isVertical ? r.x + r.w/2 : r.x + r.w - 10}
-                y2={isVertical ? r.y + r.h - 10 : r.y + r.h/2}
-                stroke={T.roadStroke}
-                strokeWidth="1"
-                strokeDasharray="10 12"
-              />
-            );
-          })}
+          <RoadSurface loteamento={loteamento} />
 
           {/* Landmarks */}
           {loteamento.landmarks?.map((lm, i) => {
             if (lm.kind === 'praca') {
+              const labelColor = mapTheme === 'satelite' ? '#d4edba' : '#3d5230';
+              if (lm.pracaShape === 'ellipse') {
+                return (
+                  <g key={`lm-${i}`}>
+                    <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry}
+                      fill="url(#park-texture)" stroke="rgba(0,0,0,0.35)" strokeWidth="1.2" />
+                    <text x={lm.cx} y={lm.cy + 4} fontSize="11" textAnchor="middle"
+                      fontFamily="Manrope" fontWeight="600" fill={labelColor}>
+                      {lm.label}
+                    </text>
+                  </g>
+                );
+              }
+              if (lm.pracaShape === 'poly') {
+                const d = lm.points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
+                const xs = lm.points.map(p => p[0]), ys = lm.points.map(p => p[1]);
+                const cx = xs.reduce((a, b) => a + b, 0) / xs.length;
+                const cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+                return (
+                  <g key={`lm-${i}`}>
+                    <path d={d} fill="url(#park-texture)" stroke="rgba(0,0,0,0.35)" strokeWidth="1.2" strokeLinejoin="round" />
+                    <text x={cx} y={cy + 4} fontSize="11" textAnchor="middle"
+                      fontFamily="Manrope" fontWeight="600" fill={labelColor}>
+                      {lm.label}
+                    </text>
+                  </g>
+                );
+              }
               return (
                 <g key={`lm-${i}`}>
                   <rect
@@ -180,7 +232,9 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
                     y={lm.y + 8}
                     width={lm.w - 16}
                     height={lm.h - 16}
-                    fill={T.pracaFill}
+                    fill="url(#park-texture)"
+                    stroke="rgba(0,0,0,0.35)"
+                    strokeWidth="1.2"
                     rx="4"
                   />
                   <text
@@ -190,7 +244,7 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
                     textAnchor="middle"
                     fontFamily="Manrope"
                     fontWeight="600"
-                    fill={T.roadLabel}
+                    fill={labelColor}
                   >
                     {lm.label}
                   </text>
@@ -198,23 +252,53 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
               );
             }
             if (lm.kind === 'lake') {
+              const E = 10;
+              if (lm.lakeShape === 'rect') {
+                const cx = lm.x + lm.w / 2, cy = lm.y + lm.h / 2;
+                return (
+                  <g key={`lm-${i}`}>
+                    <rect x={lm.x - E} y={lm.y - E} width={lm.w + E*2} height={lm.h + E*2} fill="#9c7840" rx="8" />
+                    <rect x={lm.x - E + 2} y={lm.y - E + 2} width={lm.w + E*2 - 4} height={lm.h + E*2 - 4}
+                      fill="none" stroke="rgba(60,35,5,0.30)" strokeWidth="4" rx="7" />
+                    <rect x={lm.x} y={lm.y} width={lm.w} height={lm.h} fill="url(#lake-texture)" rx="5" />
+                    <rect x={lm.x} y={lm.y} width={lm.w} height={lm.h}
+                      fill="none" stroke="rgba(0,45,60,0.22)" strokeWidth="5" rx="5" />
+                    <text x={cx} y={cy + 6} fontSize="16" textAnchor="middle"
+                      fontFamily="Manrope" fontWeight="600" fontStyle="italic" fill="rgba(255,255,255,0.75)">
+                      {lm.label}
+                    </text>
+                  </g>
+                );
+              }
+              if (lm.lakeShape === 'poly') {
+                const pts = lm.points || [];
+                const d = pts.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
+                const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+                const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+                const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+                return (
+                  <g key={`lm-${i}`}>
+                    <path d={d} fill="#9c7840" stroke="#9c7840" strokeWidth={E * 2}
+                      strokeLinejoin="round" paintOrder="stroke fill" />
+                    <path d={d} fill="url(#lake-texture)" strokeLinejoin="round" />
+                    <path d={d} fill="none" stroke="rgba(0,45,60,0.22)" strokeWidth="5" strokeLinejoin="round" />
+                    <text x={cx} y={cy + 6} fontSize="16" textAnchor="middle"
+                      fontFamily="Manrope" fontWeight="600" fontStyle="italic" fill="rgba(255,255,255,0.75)">
+                      {lm.label}
+                    </text>
+                  </g>
+                );
+              }
               return (
                 <g key={`lm-${i}`}>
-                  <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry} fill={T.waterFill} stroke={T.waterStroke} strokeWidth="1.5" />
-                  {/* Ripple */}
-                  <ellipse cx={lm.cx - 30} cy={lm.cy - 20} rx={lm.rx*0.5} ry={lm.ry*0.4} fill="none" stroke={T.waterStroke} strokeWidth="0.8" opacity="0.4" />
-                  <ellipse cx={lm.cx + 10} cy={lm.cy + 25} rx={lm.rx*0.3} ry={lm.ry*0.25} fill="none" stroke={T.waterStroke} strokeWidth="0.8" opacity="0.4" />
-                  <text
-                    x={lm.cx}
-                    y={lm.cy + 6}
-                    fontSize="16"
-                    textAnchor="middle"
-                    fontFamily="Manrope"
-                    fontWeight="600"
-                    fontStyle="italic"
-                    fill={mapTheme === 'satelite' ? '#fff' : '#3d6680'}
-                    opacity="0.85"
-                  >
+                  <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx + E} ry={lm.ry + E} fill="#9c7840" />
+                  <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx + E - 2} ry={lm.ry + E - 2}
+                    fill="none" stroke="rgba(60,35,5,0.30)" strokeWidth="4" />
+                  <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry} fill="url(#lake-texture)" />
+                  <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry}
+                    fill="none" stroke="rgba(0,45,60,0.22)" strokeWidth="5" />
+                  <text x={lm.cx} y={lm.cy + 6} fontSize="16" textAnchor="middle"
+                    fontFamily="Manrope" fontWeight="600" fontStyle="italic" fill="rgba(255,255,255,0.75)">
                     {lm.label}
                   </text>
                 </g>
@@ -237,12 +321,22 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
           })}
 
           {/* Trees */}
-          {loteamento.trees?.map(([x, y], i) => (
-            <g key={`t-${i}`}>
-              <circle cx={x} cy={y+1} r="9" fill="rgba(0,0,0,0.12)" />
-              <circle cx={x} cy={y} r="9" fill={T.treeFill} stroke={T.treeStroke} strokeWidth="0.8" />
-            </g>
-          ))}
+          {loteamento.trees?.map((tree, i) => {
+            const [x, y, treeType = 1] = tree;
+            const TREE_CFG = {
+              1: { href: '/textures/trees/tree_01.png', s: 60 },
+              2: { href: '/textures/trees/tree_02.png', s: 90 },
+              3: { href: '/textures/trees/tree_03.png', s: 65 },
+              4: { href: '/textures/trees/tree_04.png', s: 85 },
+              5: { href: '/textures/trees/tree_05.png', s: 75 },
+            };
+            const cfg = TREE_CFG[treeType] || TREE_CFG[1];
+            const half = cfg.s / 2;
+            return (
+              <image key={`t-${i}`} href={cfg.href}
+                x={x - half} y={y - half} width={cfg.s} height={cfg.s} />
+            );
+          })}
 
           {/* Lots */}
           {loteamento.lots.map((lot) => {
@@ -348,7 +442,7 @@ function MapControls({ zoom, onZoomIn, onZoomOut, onReset, theme }) {
   );
 }
 
-function RoadSurface({ loteamento, theme }) {
+function RoadSurface({ loteamento }) {
   const rectRoadLine = (road) => {
     const horizontal = road.w >= road.h;
     if (horizontal) {
@@ -364,63 +458,65 @@ function RoadSurface({ loteamento, theme }) {
 
   return (
     <g>
+      {/* Sidewalk outer edge */}
       <g>
         {rectRoads.map((road, i) => {
           const line = rectRoadLine(road);
           return (
-            <line
-              key={`road-border-${i}`}
-              x1={line.x1}
-              y1={line.y1}
-              x2={line.x2}
-              y2={line.y2}
-              stroke={theme.roadStroke}
-              strokeWidth={line.width + 2}
-              strokeLinecap="round"
-            />
-          );
-        })}
-        {pathRoads.map((road, i) => {
-          const width = road.width || 60;
-          return (
-            <path
-              key={`path-border-${i}`}
-              d={road.d}
-              fill="none"
-              stroke={theme.roadStroke}
-              strokeWidth={width + 2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          );
-        })}
-      </g>
-      <g>
-        {rectRoads.map((road, i) => {
-          const line = rectRoadLine(road);
-          return (
-            <line
-              key={`road-fill-${i}`}
-              x1={line.x1}
-              y1={line.y1}
-              x2={line.x2}
-              y2={line.y2}
-              stroke={theme.road}
-              strokeWidth={line.width}
-              strokeLinecap="round"
-            />
+            <line key={`road-sw-edge-${i}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2}
+              stroke="#aaa79d" strokeWidth={line.width + 4} strokeLinecap="round" opacity={0.45} />
           );
         })}
         {pathRoads.map((road, i) => (
-          <path
-            key={`path-fill-${i}`}
-            d={road.d}
-            fill="none"
-            stroke={theme.road}
-            strokeWidth={road.width || 60}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+          <path key={`path-sw-edge-${i}`} d={road.d} fill="none"
+            stroke="#aaa79d" strokeWidth={(road.width || 60) + 4}
+            strokeLinecap="round" strokeLinejoin="round" opacity={0.45} />
+        ))}
+      </g>
+      {/* Sidewalk texture */}
+      <g>
+        {rectRoads.map((road, i) => {
+          const line = rectRoadLine(road);
+          return (
+            <line key={`road-sw-${i}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2}
+              stroke="url(#road-sidewalk)" strokeWidth={line.width + 2} strokeLinecap="round" />
+          );
+        })}
+        {pathRoads.map((road, i) => (
+          <path key={`path-sw-${i}`} d={road.d} fill="none"
+            stroke="url(#road-sidewalk)" strokeWidth={(road.width || 60) + 2}
+            strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+      </g>
+      {/* Asphalt texture */}
+      <g>
+        {rectRoads.map((road, i) => {
+          const line = rectRoadLine(road);
+          return (
+            <line key={`road-asph-${i}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2}
+              stroke="url(#road-asphalt)" strokeWidth={Math.round(line.width * 0.72)} strokeLinecap="round" />
+          );
+        })}
+        {pathRoads.map((road, i) => (
+          <path key={`path-asph-${i}`} d={road.d} fill="none"
+            stroke="url(#road-asphalt)" strokeWidth={Math.round((road.width || 60) * 0.72)}
+            strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+      </g>
+      {/* Center dashed lines */}
+      <g>
+        {rectRoads.map((road, i) => {
+          const line = rectRoadLine(road);
+          return (
+            <line key={`road-dash-${i}`} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2}
+              stroke="#f2e8b8" strokeWidth="2" strokeDasharray="25 20"
+              strokeLinecap="round" opacity={0.75} />
+          );
+        })}
+        {pathRoads.map((road, i) => (
+          <path key={`path-dash-${i}`} d={road.d} fill="none"
+            stroke="#f2e8b8" strokeWidth="2" strokeDasharray="25 20"
+            strokeLinecap="round" opacity={0.75} />
         ))}
       </g>
     </g>

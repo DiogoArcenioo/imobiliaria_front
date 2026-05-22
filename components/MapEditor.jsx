@@ -235,13 +235,30 @@ function loteamentoToShapes(lt) {
   }
   // Landmarks
   for (const lm of lt.landmarks || []) {
-    if (lm.kind === 'praca') shapes.push({ id: 'sh-p-' + shapes.length, kind: 'praca', x: lm.x, y: lm.y, w: lm.w, h: lm.h, name: lm.label || 'Praça' });
-    if (lm.kind === 'lake') shapes.push({ id: 'sh-l-' + shapes.length, kind: 'lago', cx: lm.cx, cy: lm.cy, rx: lm.rx, ry: lm.ry, name: lm.label || 'Lago' });
+    if (lm.kind === 'praca') {
+      if (lm.pracaShape === 'ellipse') {
+        shapes.push({ id: 'sh-p-' + shapes.length, kind: 'praca', shape: 'ellipse', cx: lm.cx, cy: lm.cy, rx: lm.rx, ry: lm.ry, name: lm.label || 'Praça' });
+      } else if (lm.pracaShape === 'poly') {
+        shapes.push({ id: 'sh-p-' + shapes.length, kind: 'praca', shape: 'poly', points: lm.points, name: lm.label || 'Praça' });
+      } else {
+        shapes.push({ id: 'sh-p-' + shapes.length, kind: 'praca', shape: 'rect', x: lm.x, y: lm.y, w: lm.w, h: lm.h, name: lm.label || 'Praça' });
+      }
+    }
+    if (lm.kind === 'lake') {
+      if (lm.lakeShape === 'rect') {
+        shapes.push({ id: 'sh-l-' + shapes.length, kind: 'lago', shape: 'rect', x: lm.x, y: lm.y, w: lm.w, h: lm.h, name: lm.label || 'Lago' });
+      } else if (lm.lakeShape === 'poly') {
+        shapes.push({ id: 'sh-l-' + shapes.length, kind: 'lago', shape: 'poly', points: lm.points, name: lm.label || 'Lago' });
+      } else {
+        shapes.push({ id: 'sh-l-' + shapes.length, kind: 'lago', shape: 'ellipse', cx: lm.cx, cy: lm.cy, rx: lm.rx, ry: lm.ry, name: lm.label || 'Lago' });
+      }
+    }
     if (lm.kind === 'gate') shapes.push({ id: 'sh-g-' + shapes.length, kind: 'portaria', x: lm.x, y: lm.y, w: 50, h: 40, name: lm.label || 'Portaria' });
   }
   // Trees
-  for (const [x, y] of lt.trees || []) {
-    shapes.push({ id: 'sh-t-' + shapes.length, kind: 'arvore', x, y });
+  for (const tree of lt.trees || []) {
+    const [x, y, treeType = 1] = tree;
+    shapes.push({ id: 'sh-t-' + shapes.length, kind: 'arvore', x, y, treeType });
   }
   // Lots — convert polygon strings to rectangles when possible
   for (const lot of lt.lots || []) {
@@ -338,6 +355,11 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
   const [selectedId, setSelectedId] = useStateEd(null);
   const [drawing, setDrawing] = useStateEd(null);
   const [polyPoints, setPolyPoints] = useStateEd([]);
+  const [lagoSubtool, setLagoSubtool] = useStateEd('ellipse');
+  const [lagoPolyPoints, setLagoPolyPoints] = useStateEd([]);
+  const [pracaSubtool, setPracaSubtool] = useStateEd('rect');
+  const [pracaPolyPoints, setPracaPolyPoints] = useStateEd([]);
+  const [arvoreSubtool, setArvoreSubtool] = useStateEd(1);
   const [roadDraft, setRoadDraft] = useStateEd(null);
   const [roadPreview, setRoadPreview] = useStateEd(null);
   const [roadSnapTarget, setRoadSnapTarget] = useStateEd(null);
@@ -422,7 +444,14 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
       return moveRoadShape(shape, dx, dy);
     }
     if (shape.kind === 'lago') {
+      if (shape.shape === 'rect') return { ...shape, x: shape.x + dx, y: shape.y + dy };
+      if (shape.shape === 'poly') return { ...shape, points: shape.points.map(([px, py]) => [px + dx, py + dy]) };
       return { ...shape, cx: shape.cx + dx, cy: shape.cy + dy };
+    }
+    if (shape.kind === 'praca') {
+      if (shape.shape === 'ellipse') return { ...shape, cx: shape.cx + dx, cy: shape.cy + dy };
+      if (shape.shape === 'poly') return { ...shape, points: shape.points.map(([px, py]) => [px + dx, py + dy]) };
+      return { ...shape, x: shape.x + dx, y: shape.y + dy };
     }
     if (shape.kind === 'lote-poly') {
       return { ...shape, points: shape.points.map(([px, py]) => [px + dx, py + dy]) };
@@ -546,7 +575,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
     }
 
     if (tool === 'arvore' || tool === 'portaria') {
-      const id = addShape({ kind: tool, x, y, ...(tool === 'portaria' ? { w: 50, h: 40, name: 'Portaria' } : {}) });
+      const id = addShape({ kind: tool, x, y, ...(tool === 'portaria' ? { w: 50, h: 40, name: 'Portaria' } : { treeType: arvoreSubtool }) });
       setSelectedId(id);
       return;
     }
@@ -584,6 +613,30 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
         snapTarget: activeRoadSnap,
       };
       setRoadPreview({ type: 'line', to: anchor });
+      return;
+    }
+
+    if (tool === 'lago' && lagoSubtool === 'poly') {
+      if (lagoPolyPoints.length >= 3) {
+        const first = lagoPolyPoints[0];
+        if (Math.hypot(rawX - first[0], rawY - first[1]) <= ROAD_NODE_SNAP_RADIUS) {
+          finishLagoPoly();
+          return;
+        }
+      }
+      setLagoPolyPoints([...lagoPolyPoints, [x, y]]);
+      return;
+    }
+
+    if (tool === 'praca' && pracaSubtool === 'poly') {
+      if (pracaPolyPoints.length >= 3) {
+        const first = pracaPolyPoints[0];
+        if (Math.hypot(rawX - first[0], rawY - first[1]) <= ROAD_NODE_SNAP_RADIUS) {
+          finishPracaPoly();
+          return;
+        }
+      }
+      setPracaPolyPoints([...pracaPolyPoints, [x, y]]);
       return;
     }
 
@@ -669,11 +722,19 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
         const x = Math.min(drawing.x1, drawing.x2);
         const y = Math.min(drawing.y1, drawing.y2);
         if (drawing.kind === 'lago') {
-          addShape({ kind: 'lago', cx: x + w/2, cy: y + h/2, rx: w/2, ry: h/2, name: 'Lago' });
+          if (lagoSubtool === 'rect') {
+            addShape({ kind: 'lago', shape: 'rect', x, y, w, h, name: 'Lago' });
+          } else {
+            addShape({ kind: 'lago', shape: 'ellipse', cx: x + w/2, cy: y + h/2, rx: w/2, ry: h/2, name: 'Lago' });
+          }
         } else if (drawing.kind === 'rua') {
           addShape({ kind: 'rua', x, y, w, h, name: '', label: true });
         } else if (drawing.kind === 'praca') {
-          addShape({ kind: 'praca', x, y, w, h, name: 'Praça' });
+          if (pracaSubtool === 'ellipse') {
+            addShape({ kind: 'praca', shape: 'ellipse', cx: x + w/2, cy: y + h/2, rx: w/2, ry: h/2, name: 'Praça' });
+          } else {
+            addShape({ kind: 'praca', shape: 'rect', x, y, w, h, name: 'Praça' });
+          }
         } else {
           addShape({ kind: drawing.kind, x, y, w, h });
         }
@@ -709,6 +770,22 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
       setSelectedId(id);
     }
     setPolyPoints([]);
+  };
+
+  const finishLagoPoly = () => {
+    if (lagoPolyPoints.length >= 3) {
+      const id = addShape({ kind: 'lago', shape: 'poly', points: lagoPolyPoints, name: 'Lago' });
+      setSelectedId(id);
+    }
+    setLagoPolyPoints([]);
+  };
+
+  const finishPracaPoly = () => {
+    if (pracaPolyPoints.length >= 3) {
+      const id = addShape({ kind: 'praca', shape: 'poly', points: pracaPolyPoints, name: 'Praça' });
+      setSelectedId(id);
+    }
+    setPracaPolyPoints([]);
   };
 
   const undoRoadDraftPoint = () => {
@@ -748,6 +825,16 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
       else setPolyPoints([]);
       return true;
     }
+    if (lagoPolyPoints.length) {
+      if (lagoPolyPoints.length >= 3) finishLagoPoly();
+      else setLagoPolyPoints([]);
+      return true;
+    }
+    if (pracaPolyPoints.length) {
+      if (pracaPolyPoints.length >= 3) finishPracaPoly();
+      else setPracaPolyPoints([]);
+      return true;
+    }
     return false;
   };
 
@@ -763,6 +850,8 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
         setRoadSnapTarget(null);
         setDrawing(null);
         setPolyPoints([]);
+        setLagoPolyPoints([]);
+        setPracaPolyPoints([]);
         setSelectedId(null);
       }
       else if (e.key === 'Enter') {
@@ -777,7 +866,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [polyPoints, selectedId, shapes, roadDraft]);
+  }, [polyPoints, lagoPolyPoints, pracaPolyPoints, selectedId, shapes, roadDraft]);
 
   // ── compute stats ──────────────────────────────────────────────────────
   const stats = useMemoEd(() => {
@@ -793,6 +882,8 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
     setTool(id);
     setDrawing(null);
     setPolyPoints([]);
+    setLagoPolyPoints([]);
+    setPracaPolyPoints([]);
     setRoadDraft(null);
     setRoadPreview(null);
     setRoadSnapTarget(null);
@@ -883,6 +974,77 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
           {TOOL_LIST.filter((t) => t.group === 'draw').map((t) => (
             <ToolButton key={t.id} tool={t} active={tool === t.id} onClick={() => activateTool(t.id)} />
           ))}
+          {tool === 'lago' && (
+            <div className="ed-lago-subtool">
+              <button
+                className={'ed-lago-sub' + (lagoSubtool === 'ellipse' ? ' ed-lago-sub-active' : '')}
+                onClick={() => { setLagoSubtool('ellipse'); setLagoPolyPoints([]); }}
+                title="Oval"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><ellipse cx="8" cy="8" rx="6" ry="4.5" stroke="currentColor" strokeWidth="1.3"/></svg>
+                Oval
+              </button>
+              <button
+                className={'ed-lago-sub' + (lagoSubtool === 'rect' ? ' ed-lago-sub-active' : '')}
+                onClick={() => { setLagoSubtool('rect'); setLagoPolyPoints([]); }}
+                title="Retângulo"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="4" width="11" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/></svg>
+                Ret.
+              </button>
+              <button
+                className={'ed-lago-sub' + (lagoSubtool === 'poly' ? ' ed-lago-sub-active' : '')}
+                onClick={() => { setLagoSubtool('poly'); setLagoPolyPoints([]); }}
+                title="Irregular"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 11 C4 7 6 4 9 3 C12 5 14 8 13 12 C10 14 5 13 3 11Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+                Irreg.
+              </button>
+            </div>
+          )}
+          {tool === 'praca' && (
+            <div className="ed-lago-subtool">
+              <button
+                className={'ed-lago-sub' + (pracaSubtool === 'ellipse' ? ' ed-lago-sub-active' : '')}
+                onClick={() => { setPracaSubtool('ellipse'); setPracaPolyPoints([]); }}
+                title="Oval"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><ellipse cx="8" cy="8" rx="6" ry="4.5" stroke="currentColor" strokeWidth="1.3"/></svg>
+                Oval
+              </button>
+              <button
+                className={'ed-lago-sub' + (pracaSubtool === 'rect' ? ' ed-lago-sub-active' : '')}
+                onClick={() => { setPracaSubtool('rect'); setPracaPolyPoints([]); }}
+                title="Retângulo"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2.5" y="4" width="11" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/></svg>
+                Ret.
+              </button>
+              <button
+                className={'ed-lago-sub' + (pracaSubtool === 'poly' ? ' ed-lago-sub-active' : '')}
+                onClick={() => { setPracaSubtool('poly'); setPracaPolyPoints([]); }}
+                title="Irregular"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 11 C4 7 6 4 9 3 C12 5 14 8 13 12 C10 14 5 13 3 11Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+                Irreg.
+              </button>
+            </div>
+          )}
+          {tool === 'arvore' && (
+            <div className="ed-arvore-subtool">
+              {[1,2,3,4,5].map((n) => (
+                <button
+                  key={n}
+                  className={'ed-arvore-sub' + (arvoreSubtool === n ? ' ed-arvore-sub-active' : '')}
+                  onClick={() => setArvoreSubtool(n)}
+                  title={`Árvore tipo ${n}`}
+                >
+                  <img src={`/textures/trees/tree_0${n}.png`} alt={`T${n}`} />
+                  <span>T{n}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="ed-tb-sep" />
           <div className="ed-tb-label">QUADRA</div>
           <div className="ed-quadra-picker">
@@ -926,14 +1088,42 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
           >
             {/* Grid */}
             <defs>
+              <pattern id="ed-fundo" patternUnits="userSpaceOnUse" width="512" height="512">
+                <image href="/textures/fundo.jpg" x="0" y="0" width="512" height="512" />
+              </pattern>
               <pattern id="ed-grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
-                <path d={`M${GRID} 0L0 0L0 ${GRID}`} fill="none" stroke="rgba(0,0,0,0.05)" strokeWidth="0.5" />
+                <path d={`M${GRID} 0L0 0L0 ${GRID}`} fill="none" stroke="rgba(180,210,255,0.13)" strokeWidth="0.5" />
               </pattern>
               <pattern id="ed-grid-big" width={GRID * 5} height={GRID * 5} patternUnits="userSpaceOnUse">
-                <path d={`M${GRID*5} 0L0 0L0 ${GRID*5}`} fill="none" stroke="rgba(0,0,0,0.09)" strokeWidth="0.8" />
+                <path d={`M${GRID*5} 0L0 0L0 ${GRID*5}`} fill="none" stroke="rgba(180,210,255,0.28)" strokeWidth="0.9" />
+              </pattern>
+              <pattern id="road-asphalt" patternUnits="userSpaceOnUse" width="80" height="80">
+                <rect width="80" height="80" fill="#4a4d4f"/>
+                <circle cx="12" cy="18" r="1" fill="#6a6d6f" opacity="0.45"/>
+                <circle cx="42" cy="9" r="1.2" fill="#727577" opacity="0.35"/>
+                <circle cx="67" cy="33" r="0.8" fill="#808385" opacity="0.3"/>
+                <circle cx="28" cy="61" r="1" fill="#75787a" opacity="0.35"/>
+                <circle cx="18" cy="42" r="1.3" fill="#2e3032" opacity="0.45"/>
+                <circle cx="54" cy="57" r="1" fill="#343638" opacity="0.4"/>
+                <circle cx="72" cy="70" r="0.9" fill="#292b2d" opacity="0.35"/>
+                <path d="M8 70 L18 64 L24 67" stroke="#2b2d2f" strokeWidth="1" opacity="0.25" fill="none"/>
+                <path d="M50 25 L57 30 L63 28" stroke="#2f3133" strokeWidth="1" opacity="0.25" fill="none"/>
+              </pattern>
+              <pattern id="road-sidewalk" patternUnits="userSpaceOnUse" width="50" height="50">
+                <rect width="50" height="50" fill="#d8d5ca"/>
+                <path d="M0 0 H50 M0 25 H50 M0 50 H50" stroke="#bdb8aa" strokeWidth="1" opacity="0.8" fill="none"/>
+                <path d="M0 0 V50 M25 0 V50 M50 0 V50" stroke="#bdb8aa" strokeWidth="1" opacity="0.8" fill="none"/>
+                <circle cx="12" cy="14" r="0.8" fill="#aaa596" opacity="0.5"/>
+                <circle cx="35" cy="31" r="0.7" fill="#aaa596" opacity="0.4"/>
+              </pattern>
+              <pattern id="lake-texture" patternUnits="userSpaceOnUse" width="512" height="512">
+                <image href="/textures/lago.jpg" x="0" y="0" width="512" height="512" />
+              </pattern>
+              <pattern id="park-texture" patternUnits="userSpaceOnUse" width="512" height="512">
+                <image href="/textures/praca.jpg" x="0" y="0" width="512" height="512" />
               </pattern>
             </defs>
-            <rect width={canvasSize.width} height={canvasSize.height} fill="#f4f3ec" />
+            <rect width={canvasSize.width} height={canvasSize.height} fill="url(#ed-fundo)" />
             <rect width={canvasSize.width} height={canvasSize.height} fill="url(#ed-grid)" />
             <rect width={canvasSize.width} height={canvasSize.height} fill="url(#ed-grid-big)" />
 
@@ -949,7 +1139,49 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
             ))}
 
             {/* Drawing preview */}
-            {drawing && <DrawingPreview drawing={drawing} />}
+            {drawing && <DrawingPreview drawing={drawing} lagoSubtool={lagoSubtool} pracaSubtool={pracaSubtool} />}
+            {/* Lago polygon in progress */}
+            {lagoPolyPoints.length > 0 && (
+              <g className="ed-poly-progress">
+                <path
+                  d={[...lagoPolyPoints, mousePos || lagoPolyPoints[lagoPolyPoints.length - 1]]
+                    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + (lagoPolyPoints.length >= 3 ? ' Z' : '')}
+                  fill="rgba(148, 184, 213, 0.35)"
+                  stroke="#3288e0"
+                  strokeWidth="1.5"
+                  strokeDasharray="6 4"
+                  strokeLinejoin="round"
+                />
+                {lagoPolyPoints.map((p, i) => (
+                  <circle key={i} cx={p[0]} cy={p[1]} r="5" fill="#3288e0" stroke="#fff" strokeWidth="1.5" />
+                ))}
+                {lagoPolyPoints.length >= 3 && (
+                  <circle cx={lagoPolyPoints[0][0]} cy={lagoPolyPoints[0][1]} r="7"
+                    fill="none" stroke="#3288e0" strokeWidth="2" opacity="0.7" />
+                )}
+              </g>
+            )}
+            {/* Praça polygon in progress */}
+            {pracaPolyPoints.length > 0 && (
+              <g className="ed-poly-progress">
+                <path
+                  d={[...pracaPolyPoints, mousePos || pracaPolyPoints[pracaPolyPoints.length - 1]]
+                    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + (pracaPolyPoints.length >= 3 ? ' Z' : '')}
+                  fill="rgba(159, 190, 94, 0.35)"
+                  stroke="#5a9e3a"
+                  strokeWidth="1.5"
+                  strokeDasharray="6 4"
+                  strokeLinejoin="round"
+                />
+                {pracaPolyPoints.map((p, i) => (
+                  <circle key={i} cx={p[0]} cy={p[1]} r="5" fill="#5a9e3a" stroke="#fff" strokeWidth="1.5" />
+                ))}
+                {pracaPolyPoints.length >= 3 && (
+                  <circle cx={pracaPolyPoints[0][0]} cy={pracaPolyPoints[0][1]} r="7"
+                    fill="none" stroke="#5a9e3a" strokeWidth="2" opacity="0.7" />
+                )}
+              </g>
+            )}
             {roadDraft && (
               <RoadDraftPreview
                 draft={roadDraft}
@@ -1007,6 +1239,16 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
             {polyPoints.length > 0 && (
               <span className="ed-stat ed-stat-hint">
                 {polyPoints.length} ponto{polyPoints.length > 1 ? 's' : ''} · <b>Enter</b>/<b>Esc</b>/duplo clique finaliza · clique no primeiro ponto fecha
+              </span>
+            )}
+            {lagoPolyPoints.length > 0 && (
+              <span className="ed-stat ed-stat-hint">
+                Lago irregular · {lagoPolyPoints.length} ponto{lagoPolyPoints.length > 1 ? 's' : ''} · <b>Enter</b>/<b>Esc</b>/duplo clique finaliza · clique no 1º ponto fecha
+              </span>
+            )}
+            {pracaPolyPoints.length > 0 && (
+              <span className="ed-stat ed-stat-hint">
+                Praça irregular · {pracaPolyPoints.length} ponto{pracaPolyPoints.length > 1 ? 's' : ''} · <b>Enter</b>/<b>Esc</b>/duplo clique finaliza · clique no 1º ponto fecha
               </span>
             )}
             {roadDraft && (
@@ -1075,6 +1317,41 @@ function RoadSurfaceLayer({ shapes, selectedId }) {
     return { x1: x, y1: shape.y, x2: x, y2: shape.y + shape.h, width: shape.w };
   };
 
+  const renderSidewalkEdge = (shape) => {
+    if (shape.roadType === 'path') {
+      const d = shape.d || buildRoadPath(shape.start, shape.segments || []);
+      const width = shape.width || ROAD_WIDTH;
+      return (
+        <path
+          key={`${shape.id}-sw-edge`}
+          data-shape-id={shape.id}
+          d={d}
+          fill="none"
+          stroke="#aaa79d"
+          strokeWidth={width + 4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={0.45}
+        />
+      );
+    }
+    const line = rectRoadLine(shape);
+    return (
+      <line
+        key={`${shape.id}-sw-edge`}
+        data-shape-id={shape.id}
+        x1={line.x1}
+        y1={line.y1}
+        x2={line.x2}
+        y2={line.y2}
+        stroke="#aaa79d"
+        strokeWidth={line.width + 4}
+        strokeLinecap="round"
+        opacity={0.45}
+      />
+    );
+  };
+
   const renderBorder = (shape) => {
     if (shape.roadType === 'path') {
       const d = shape.d || buildRoadPath(shape.start, shape.segments || []);
@@ -1085,7 +1362,7 @@ function RoadSurfaceLayer({ shapes, selectedId }) {
           data-shape-id={shape.id}
           d={d}
           fill="none"
-          stroke="#cdd1c6"
+          stroke="url(#road-sidewalk)"
           strokeWidth={width + 2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -1101,7 +1378,7 @@ function RoadSurfaceLayer({ shapes, selectedId }) {
         y1={line.y1}
         x2={line.x2}
         y2={line.y2}
-        stroke="#cdd1c6"
+        stroke="url(#road-sidewalk)"
         strokeWidth={line.width + 2}
         strokeLinecap="round"
       />
@@ -1111,14 +1388,15 @@ function RoadSurfaceLayer({ shapes, selectedId }) {
   const renderFill = (shape) => {
     if (shape.roadType === 'path') {
       const d = shape.d || buildRoadPath(shape.start, shape.segments || []);
+      const width = shape.width || ROAD_WIDTH;
       return (
         <path
           key={`${shape.id}-fill`}
           data-shape-id={shape.id}
           d={d}
           fill="none"
-          stroke="#ffffff"
-          strokeWidth={shape.width || ROAD_WIDTH}
+          stroke="url(#road-asphalt)"
+          strokeWidth={Math.round(width * 0.72)}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -1133,9 +1411,44 @@ function RoadSurfaceLayer({ shapes, selectedId }) {
         y1={line.y1}
         x2={line.x2}
         y2={line.y2}
-        stroke="#ffffff"
-        strokeWidth={line.width}
+        stroke="url(#road-asphalt)"
+        strokeWidth={Math.round(line.width * 0.72)}
         strokeLinecap="round"
+      />
+    );
+  };
+
+  const renderCenterLine = (shape) => {
+    if (shape.roadType === 'path') {
+      const d = shape.d || buildRoadPath(shape.start, shape.segments || []);
+      return (
+        <path
+          key={`${shape.id}-center`}
+          d={d}
+          fill="none"
+          stroke="#f2e8b8"
+          strokeWidth="2"
+          strokeDasharray="25 20"
+          strokeLinecap="round"
+          opacity={0.75}
+          pointerEvents="none"
+        />
+      );
+    }
+    const line = rectRoadLine(shape);
+    return (
+      <line
+        key={`${shape.id}-center`}
+        x1={line.x1}
+        y1={line.y1}
+        x2={line.x2}
+        y2={line.y2}
+        stroke="#f2e8b8"
+        strokeWidth="2"
+        strokeDasharray="25 20"
+        strokeLinecap="round"
+        opacity={0.75}
+        pointerEvents="none"
       />
     );
   };
@@ -1204,8 +1517,10 @@ function RoadSurfaceLayer({ shapes, selectedId }) {
 
   return (
     <g className="ed-road-surfaces">
+      <g>{roads.map(renderSidewalkEdge)}</g>
       <g>{roads.map(renderBorder)}</g>
       <g>{roads.map(renderFill)}</g>
+      <g>{roads.map(renderCenterLine)}</g>
       <g>{roads.map(renderSelectedOutline)}</g>
       <g>{roads.map(renderLabel)}</g>
     </g>
@@ -1364,12 +1679,43 @@ function EditorShape({ shape, selected }) {
     );
   }
   if (shape.kind === 'praca') {
+    const strokeColor = selected ? '#3288e0' : 'rgba(0,0,0,0.35)';
+    const sw = selected ? 2.5 : 1.2;
+    if (shape.shape === 'ellipse') {
+      return (
+        <g data-shape-id={shape.id}>
+          <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry}
+            fill="url(#park-texture)" stroke={strokeColor} strokeWidth={sw} />
+          <text x={shape.cx} y={shape.cy + 5} fontSize="12" textAnchor="middle"
+            fontFamily="Manrope" fontWeight="600" fill="#3d5230" pointerEvents="none">
+            {shape.name || 'Praça'}
+          </text>
+          {selected && <SelHandles x={shape.cx - shape.rx} y={shape.cy - shape.ry} w={shape.rx*2} h={shape.ry*2} />}
+        </g>
+      );
+    }
+    if (shape.shape === 'poly') {
+      const d = shape.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
+      const xs = shape.points.map(p => p[0]), ys = shape.points.map(p => p[1]);
+      const bx = Math.min(...xs), by = Math.min(...ys);
+      const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
+      return (
+        <g data-shape-id={shape.id}>
+          <path d={d} fill="url(#park-texture)" stroke={strokeColor} strokeWidth={sw} strokeLinejoin="round" />
+          <text x={bx + bw/2} y={by + bh/2 + 5} fontSize="12" textAnchor="middle"
+            fontFamily="Manrope" fontWeight="600" fill="#3d5230" pointerEvents="none">
+            {shape.name || 'Praça'}
+          </text>
+          {selected && <SelHandles x={bx} y={by} w={bw} h={bh} />}
+        </g>
+      );
+    }
     return (
       <g data-shape-id={shape.id}>
         <rect x={shape.x + 6} y={shape.y + 6} width={shape.w - 12} height={shape.h - 12}
-          fill="#c5d4b1" stroke={selected ? '#3288e0' : '#a8b89a'} strokeWidth={selected ? 2.5 : 1} rx="4" />
+          fill="url(#park-texture)" stroke={strokeColor} strokeWidth={sw} rx="4" />
         <text x={shape.x + shape.w/2} y={shape.y + shape.h/2 + 4} fontSize="12" textAnchor="middle"
-          fontFamily="Manrope" fontWeight="600" fill="#5a6a4a" pointerEvents="none">
+          fontFamily="Manrope" fontWeight="600" fill="#3d5230" pointerEvents="none">
           {shape.name || 'Praça'}
         </text>
         {selected && <SelHandles x={shape.x} y={shape.y} w={shape.w} h={shape.h} />}
@@ -1377,12 +1723,64 @@ function EditorShape({ shape, selected }) {
     );
   }
   if (shape.kind === 'lago') {
+    const E = 10; // earth border width (px outside shape)
+    if (shape.shape === 'rect') {
+      return (
+        <g data-shape-id={shape.id}>
+          <rect x={shape.x - E} y={shape.y - E} width={shape.w + E*2} height={shape.h + E*2}
+            fill="#9c7840" rx="8" />
+          <rect x={shape.x - E + 2} y={shape.y - E + 2} width={shape.w + E*2 - 4} height={shape.h + E*2 - 4}
+            fill="none" stroke="rgba(60,35,5,0.30)" strokeWidth="4" rx="7" />
+          <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h}
+            fill="url(#lake-texture)" rx="5" />
+          <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h}
+            fill="none" stroke="rgba(0,45,60,0.22)" strokeWidth="5" rx="5" />
+          {selected && <rect x={shape.x - E - 3} y={shape.y - E - 3} width={shape.w + E*2 + 6} height={shape.h + E*2 + 6}
+            fill="none" stroke="#3288e0" strokeWidth="2" strokeDasharray="5 3" rx="10" />}
+          <text x={shape.x + shape.w/2} y={shape.y + shape.h/2 + 5} fontSize="14" textAnchor="middle"
+            fontFamily="Manrope" fontWeight="600" fontStyle="italic" fill="rgba(255,255,255,0.75)" pointerEvents="none">
+            {shape.name || 'Lago'}
+          </text>
+          {selected && <SelHandles x={shape.x} y={shape.y} w={shape.w} h={shape.h} />}
+        </g>
+      );
+    }
+    if (shape.shape === 'poly') {
+      const d = shape.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
+      const xs = shape.points.map(p => p[0]), ys = shape.points.map(p => p[1]);
+      const bx = Math.min(...xs), by = Math.min(...ys);
+      const bw = Math.max(...xs) - bx, bh = Math.max(...ys) - by;
+      return (
+        <g data-shape-id={shape.id}>
+          <path d={d} fill="#9c7840" stroke="#9c7840" strokeWidth={E * 2}
+            strokeLinejoin="round" paintOrder="stroke fill" />
+          <path d={d} fill="#9c7840" stroke="rgba(60,35,5,0.30)" strokeWidth={E * 2 - 4}
+            strokeLinejoin="round" paintOrder="stroke fill" />
+          <path d={d} fill="url(#lake-texture)" strokeLinejoin="round" />
+          <path d={d} fill="none" stroke="rgba(0,45,60,0.22)" strokeWidth="5" strokeLinejoin="round" />
+          {selected && <path d={d} fill="none" stroke="#3288e0" strokeWidth="2" strokeDasharray="5 3"
+            strokeLinejoin="round" style={{ transform: 'scale(1.02)', transformOrigin: `${bx + bw/2}px ${by + bh/2}px` }} />}
+          <text x={bx + bw/2} y={by + bh/2 + 5} fontSize="14" textAnchor="middle"
+            fontFamily="Manrope" fontWeight="600" fontStyle="italic" fill="rgba(255,255,255,0.75)" pointerEvents="none">
+            {shape.name || 'Lago'}
+          </text>
+          {selected && <SelHandles x={bx} y={by} w={bw} h={bh} />}
+        </g>
+      );
+    }
     return (
       <g data-shape-id={shape.id}>
+        <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx + E} ry={shape.ry + E} fill="#9c7840" />
+        <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx + E - 2} ry={shape.ry + E - 2}
+          fill="none" stroke="rgba(60,35,5,0.30)" strokeWidth="4" />
         <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry}
-          fill="#bcd6e4" stroke={selected ? '#3288e0' : '#9bb8c9'} strokeWidth={selected ? 2.5 : 1} />
+          fill="url(#lake-texture)" />
+        <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry}
+          fill="none" stroke="rgba(0,45,60,0.22)" strokeWidth="5" />
+        {selected && <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx + E + 3} ry={shape.ry + E + 3}
+          fill="none" stroke="#3288e0" strokeWidth="2" strokeDasharray="5 3" />}
         <text x={shape.cx} y={shape.cy + 5} fontSize="14" textAnchor="middle"
-          fontFamily="Manrope" fontWeight="600" fontStyle="italic" fill="#3d6680" pointerEvents="none">
+          fontFamily="Manrope" fontWeight="600" fontStyle="italic" fill="rgba(255,255,255,0.75)" pointerEvents="none">
           {shape.name || 'Lago'}
         </text>
         {selected && <SelHandles x={shape.cx - shape.rx} y={shape.cy - shape.ry} w={shape.rx*2} h={shape.ry*2} />}
@@ -1390,10 +1788,23 @@ function EditorShape({ shape, selected }) {
     );
   }
   if (shape.kind === 'arvore') {
+    const t = shape.treeType || 1;
+    const TREE_CFG = {
+      1: { href: '/textures/trees/tree_01.png', s: 60 },
+      2: { href: '/textures/trees/tree_02.png', s: 90 },
+      3: { href: '/textures/trees/tree_03.png', s: 65 },
+      4: { href: '/textures/trees/tree_04.png', s: 85 },
+      5: { href: '/textures/trees/tree_05.png', s: 75 },
+    };
+    const cfg = TREE_CFG[t] || TREE_CFG[1];
+    const half = cfg.s / 2;
     return (
       <g data-shape-id={shape.id}>
-        <circle cx={shape.x} cy={shape.y + 1} r="9" fill="rgba(0,0,0,0.12)" />
-        <circle cx={shape.x} cy={shape.y} r="9" fill="#7d9a5e" stroke={selected ? '#3288e0' : '#6a8650'} strokeWidth={selected ? 2.5 : 0.8} />
+        <image href={cfg.href} x={shape.x - half} y={shape.y - half} width={cfg.s} height={cfg.s} />
+        {selected && (
+          <circle cx={shape.x} cy={shape.y} r={half + 4}
+            fill="none" stroke="#3288e0" strokeWidth="2" strokeDasharray="5 3" opacity="0.85" />
+        )}
       </g>
     );
   }
@@ -1531,7 +1942,7 @@ function RoadDraftPreview({ draft, preview, mousePos, activeSnap }) {
   );
 }
 
-function DrawingPreview({ drawing }) {
+function DrawingPreview({ drawing, lagoSubtool, pracaSubtool }) {
   const x = Math.min(drawing.x1, drawing.x2);
   const y = Math.min(drawing.y1, drawing.y2);
   const w = Math.abs(drawing.x2 - drawing.x1);
@@ -1539,9 +1950,21 @@ function DrawingPreview({ drawing }) {
   if (w < 1 || h < 1) return null;
 
   if (drawing.kind === 'lago') {
+    if (lagoSubtool === 'rect') {
+      return (
+        <rect x={x} y={y} width={w} height={h} rx="6"
+          fill="rgba(148, 184, 213, 0.45)" stroke="#3288e0" strokeWidth="1.5" strokeDasharray="6 4" />
+      );
+    }
     return (
       <ellipse cx={x + w/2} cy={y + h/2} rx={w/2} ry={h/2}
-        fill="rgba(155, 184, 201, 0.5)" stroke="#3288e0" strokeWidth="1.5" strokeDasharray="6 4" />
+        fill="rgba(148, 184, 213, 0.45)" stroke="#3288e0" strokeWidth="1.5" strokeDasharray="6 4" />
+    );
+  }
+  if (drawing.kind === 'praca' && pracaSubtool === 'ellipse') {
+    return (
+      <ellipse cx={x + w/2} cy={y + h/2} rx={w/2} ry={h/2}
+        fill="rgba(197, 212, 177, 0.6)" stroke="#5a9e3a" strokeWidth="1.5" strokeDasharray="6 4" />
     );
   }
   return (

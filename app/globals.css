@@ -1411,6 +1411,69 @@
   }
   .ed-tool-active .ed-tool-shortcut { background: rgba(50,136,224,0.18); color: var(--accent); }
 
+  .ed-lago-subtool {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    padding: 2px 6px 6px;
+  }
+  .ed-lago-sub {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-mid);
+    padding: 5px 2px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    transition: background 0.1s;
+  }
+  .ed-lago-sub:hover { background: var(--bg-elev); color: var(--text); }
+  .ed-lago-sub-active {
+    background: var(--accent-dim) !important;
+    color: var(--accent) !important;
+    border-color: var(--accent) !important;
+  }
+
+  .ed-arvore-subtool {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    padding: 2px 6px 8px;
+  }
+  .ed-arvore-sub {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 4px 2px 3px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transition: border-color 0.12s, background 0.12s;
+  }
+  .ed-arvore-sub:hover { border-color: #8ea87a; background: var(--bg-elev); }
+  .ed-arvore-sub-active {
+    background: rgba(90,158,58,0.15) !important;
+    border-color: #5a9e3a !important;
+  }
+  .ed-arvore-sub img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    display: block;
+  }
+  .ed-arvore-sub span {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+
   .ed-quadra-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 0 6px; }
   .ed-qbtn {
     background: var(--surface);

@@ -368,9 +368,7 @@ function Navbar({ scrolled, containerRef, onLogin }) {
       alignItems:'center',
       padding:'0 max(28px, calc((100vw - 1200px)/2))',
     }}>
-      <div style={{ justifySelf:'start' }}>
-        <Logo light={!scrolled} />
-      </div>
+      <div style={{ justifySelf:'start' }} />
 
       <div style={{ display:'flex', alignItems:'center', gap:4 }}>
         {links.map(({ label, id }) => (

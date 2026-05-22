@@ -237,21 +237,100 @@ function MiniMap({ loteamento }) {
   const lots = loteamento.lots || [];
   const viewBox = loteamento.viewBox || '0 0 1400 900';
   const [, , width = 1400, height = 900] = viewBox.split(' ').map(Number);
+  const uid = loteamento.id || 'mm';
 
   return (
     <svg viewBox={viewBox} preserveAspectRatio="xMidYMid slice" className="mini-svg">
-      <rect width={width} height={height} fill="#dfe4d8" />
+      <defs>
+        <pattern id={`mm-fundo-${uid}`} patternUnits="userSpaceOnUse" width="512" height="512">
+          <image href="/textures/fundo.jpg" x="0" y="0" width="512" height="512" />
+        </pattern>
+        <pattern id={`mm-praca-${uid}`} patternUnits="userSpaceOnUse" width="512" height="512">
+          <image href="/textures/praca.jpg" x="0" y="0" width="512" height="512" />
+        </pattern>
+        <pattern id={`mm-lago-${uid}`} patternUnits="userSpaceOnUse" width="512" height="512">
+          <image href="/textures/lago.jpg" x="0" y="0" width="512" height="512" />
+        </pattern>
+      </defs>
+
+      {/* Background */}
+      <rect width={width} height={height} fill={`url(#mm-fundo-${uid})`} />
+
+      {/* Roads — sidewalk outer + asphalt inner */}
       {(loteamento.roads || []).map((road, i) => (
-        road.kind === 'rect' && <rect key={i} x={road.x} y={road.y} width={road.w} height={road.h} fill="#ffffff" />
+        road.kind === 'rect' && (
+          <g key={i}>
+            <rect x={road.x} y={road.y} width={road.w} height={road.h} fill="#ccc8b8" />
+            <rect x={road.x + road.w * 0.14} y={road.y + road.h * 0.14}
+              width={road.w * 0.72} height={road.h * 0.72} fill="#4a4d4f" />
+          </g>
+        )
       ))}
-      {(loteamento.curvedRoads || []).map((road, i) => (
-        <path key={i} d={road.d} fill="none" stroke="#ffffff" strokeWidth={road.width || 60} strokeLinecap="round" strokeLinejoin="round" />
-      ))}
-      {(loteamento.landmarks || []).map((landmark, i) => {
-        if (landmark.kind === 'lake') return <ellipse key={i} cx={landmark.cx} cy={landmark.cy} rx={landmark.rx} ry={landmark.ry} fill="#bcd6e4" />;
-        if (landmark.kind === 'praca') return <rect key={i} x={landmark.x + 8} y={landmark.y + 8} width={landmark.w - 16} height={landmark.h - 16} fill="#c5d4b1" />;
+      {(loteamento.curvedRoads || []).map((road, i) => {
+        const w = road.width || 60;
+        return (
+          <g key={i}>
+            <path d={road.d} fill="none" stroke="#ccc8b8" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />
+            <path d={road.d} fill="none" stroke="#4a4d4f" strokeWidth={Math.round(w * 0.72)} strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+        );
+      })}
+
+      {/* Landmarks */}
+      {(loteamento.landmarks || []).map((lm, i) => {
+        if (lm.kind === 'lake') {
+          const lf = `url(#mm-lago-${uid})`;
+          const E = 10;
+          if (lm.lakeShape === 'rect') return (
+            <g key={i}>
+              <rect x={lm.x - E} y={lm.y - E} width={lm.w + E*2} height={lm.h + E*2} fill="#9c7840" rx="8" />
+              <rect x={lm.x} y={lm.y} width={lm.w} height={lm.h} fill={lf} rx="5" />
+            </g>
+          );
+          if (lm.lakeShape === 'poly') {
+            const d = lm.points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
+            return (
+              <g key={i}>
+                <path d={d} fill="#9c7840" stroke="#9c7840" strokeWidth={E * 2} strokeLinejoin="round" paintOrder="stroke fill" />
+                <path d={d} fill={lf} />
+              </g>
+            );
+          }
+          return (
+            <g key={i}>
+              <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx + E} ry={lm.ry + E} fill="#9c7840" />
+              <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry} fill={lf} />
+            </g>
+          );
+        }
+        if (lm.kind === 'praca') {
+          const fill = `url(#mm-praca-${uid})`;
+          if (lm.pracaShape === 'ellipse') return <ellipse key={i} cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry} fill={fill} />;
+          if (lm.pracaShape === 'poly') {
+            const d = lm.points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
+            return <path key={i} d={d} fill={fill} />;
+          }
+          return <rect key={i} x={lm.x + 8} y={lm.y + 8} width={(lm.w || 0) - 16} height={(lm.h || 0) - 16} fill={fill} />;
+        }
         return null;
       })}
+
+      {/* Trees */}
+      {(loteamento.trees || []).map((tree, i) => {
+        const [x, y, treeType = 1] = tree;
+        const TREE_CFG = {
+          1: { href: '/textures/trees/tree_01.png', s: 60 },
+          2: { href: '/textures/trees/tree_02.png', s: 90 },
+          3: { href: '/textures/trees/tree_03.png', s: 65 },
+          4: { href: '/textures/trees/tree_04.png', s: 85 },
+          5: { href: '/textures/trees/tree_05.png', s: 75 },
+        };
+        const cfg = TREE_CFG[treeType] || TREE_CFG[1];
+        const half = cfg.s / 2;
+        return <image key={`t-${i}`} href={cfg.href} x={x - half} y={y - half} width={cfg.s} height={cfg.s} />;
+      })}
+
+      {/* Lots */}
       {lots.map((lot) => {
         const status = STATUS_COLORS[lot.status] || STATUS_COLORS.disponivel;
         return <polygon key={lot.db_id || lot.id} points={lot.polygon} fill={status.fill} fillOpacity="0.65" stroke={status.stroke} strokeWidth="2" />;
