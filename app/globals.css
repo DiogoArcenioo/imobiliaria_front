@@ -2674,6 +2674,12 @@
     font-size: 13px;
     font-weight: 700;
   }
+  .admin-check-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    padding: 10px 0 4px;
+  }
   .admin-submit {
     width: 100%;
     justify-content: center;

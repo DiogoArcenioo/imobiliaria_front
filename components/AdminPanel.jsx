@@ -12,13 +12,6 @@ const ADMIN_TABS = [
   { id: "motivos", label: "Motivos" },
 ];
 
-const TIPO_LABELS = {
-  venda: "Venda",
-  reserva: "Reserva",
-  loteamento: "Loteamento",
-  geral: "Geral",
-};
-
 function formatDateTime(value) {
   if (!value) return "-";
   return new Date(value).toLocaleString("pt-BR", {
@@ -42,6 +35,9 @@ export function AdminPanel({
   onRefreshUsers,
   onCreateUser,
   loteamentos,
+  tipos,
+  tiposLoading,
+  onRefreshTipos,
   motivos,
   motivosLoading,
   onRefreshMotivos,
@@ -99,17 +95,20 @@ export function AdminPanel({
         {tab === "cancelamentos" && (
           <CancelamentoAdmin
             loteamentos={loteamentos}
+            tipos={tipos}
             motivos={motivos}
             loading={logsLoading}
             onCancelarVenda={onCancelarVenda}
             onRefreshLogs={onRefreshLogs}
             onRefreshMotivos={onRefreshMotivos}
+            onRefreshTipos={onRefreshTipos}
             logs={cancelamentosLog}
           />
         )}
 
         {tab === "motivos" && (
           <MotivosAdmin
+            tipos={tipos}
             motivos={motivos}
             loading={motivosLoading}
             onRefresh={onRefreshMotivos}
@@ -117,21 +116,28 @@ export function AdminPanel({
             onUpdate={onUpdateMotivo}
           />
         )}
+
       </div>
     </section>
   );
 }
 
+// ── Cancelamentos ──────────────────────────────────────────────────────────────
+
 function CancelamentoAdmin({
   loteamentos = [],
+  tipos = [],
   motivos = [],
   logs = [],
   loading,
   onCancelarVenda,
   onRefreshLogs,
   onRefreshMotivos,
+  onRefreshTipos,
 }) {
-  const [tipo, setTipo] = useState("venda");
+  const tiposAtivos = useMemo(() => tipos.filter((t) => t.ativo), [tipos]);
+
+  const [tipoId, setTipoId] = useState("");
   const [loteId, setLoteId] = useState("");
   const [motivoId, setMotivoId] = useState("");
   const [motivoTexto, setMotivoTexto] = useState("");
@@ -143,19 +149,22 @@ function CancelamentoAdmin({
   }, [loteamentos]);
 
   const activeMotivos = useMemo(() => {
-    return motivos.filter((motivo) => motivo.ativo && ["venda", "geral"].includes(motivo.tipo || "venda"));
-  }, [motivos]);
+    if (!tipoId) return motivos.filter((m) => m.ativo);
+    return motivos.filter(
+      (m) => m.ativo && m.tipos?.some((t) => String(t.id) === String(tipoId))
+    );
+  }, [motivos, tipoId]);
 
   const selectedLot = soldLots.find((lot) => String(lot.db_id) === String(loteId));
+
+  function handleTipoChange(event) {
+    setTipoId(event.target.value);
+    setMotivoId("");
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
-
-    if (tipo !== "venda") {
-      setError("Por enquanto somente cancelamento de venda esta disponivel.");
-      return;
-    }
 
     if (!loteId) {
       setError("Selecione uma venda para cancelar.");
@@ -173,6 +182,7 @@ function CancelamentoAdmin({
         lote_id: Number(loteId),
         motivo_id: motivoId ? Number(motivoId) : undefined,
         motivo_texto: motivoTexto.trim() || undefined,
+        tipo_id: tipoId ? Number(tipoId) : undefined,
       });
       setLoteId("");
       setMotivoId("");
@@ -192,15 +202,22 @@ function CancelamentoAdmin({
             <h2>Cancelamento</h2>
             <p>A venda cancelada volta para disponivel e sai dos indicadores.</p>
           </div>
-          <button type="button" className="sec-tool-btn" onClick={() => { onRefreshLogs?.(); onRefreshMotivos?.(); }}>
+          <button
+            type="button"
+            className="sec-tool-btn"
+            onClick={() => { onRefreshLogs?.(); onRefreshMotivos?.(); onRefreshTipos?.(); }}
+          >
             Atualizar
           </button>
         </div>
 
         <label className="admin-field">
-          <span>O que deseja cancelar</span>
-          <select value={tipo} onChange={(event) => setTipo(event.target.value)}>
-            <option value="venda">Cancelar venda</option>
+          <span>Tipo de cancelamento</span>
+          <select value={tipoId} onChange={handleTipoChange}>
+            <option value="">Todos os tipos</option>
+            {tiposAtivos.map((tipo) => (
+              <option key={tipo.id} value={tipo.id}>{tipo.nome}</option>
+            ))}
           </select>
         </label>
 
@@ -225,7 +242,12 @@ function CancelamentoAdmin({
         )}
 
         <label className="admin-field">
-          <span>Motivo padrao</span>
+          <span>
+            Motivo padrao
+            {tipoId && activeMotivos.length === 0 && (
+              <span className="table-sub"> — nenhum motivo vinculado a este tipo</span>
+            )}
+          </span>
           <select value={motivoId} onChange={(event) => setMotivoId(event.target.value)}>
             <option value="">Selecionar motivo</option>
             {activeMotivos.map((motivo) => (
@@ -246,7 +268,11 @@ function CancelamentoAdmin({
 
         {error && <div className="form-alert">{error}</div>}
 
-        <button className="qa-btn qa-btn-primary admin-submit" type="submit" disabled={saving || soldLots.length === 0}>
+        <button
+          className="qa-btn qa-btn-primary admin-submit"
+          type="submit"
+          disabled={saving || soldLots.length === 0}
+        >
           {saving ? "Cancelando..." : "Cancelar venda"}
         </button>
       </form>
@@ -269,7 +295,7 @@ function CancelamentoAdmin({
               <thead>
                 <tr>
                   <th>Data</th>
-                  <th>Operacao</th>
+                  <th>Tipo</th>
                   <th>Item</th>
                   <th>Cliente</th>
                   <th>Motivo</th>
@@ -280,7 +306,7 @@ function CancelamentoAdmin({
                 {logs.map((log) => (
                   <tr key={log.id}>
                     <td>{formatDateTime(log.created_at)}</td>
-                    <td>{log.tipo_cancelamento}</td>
+                    <td>{log.tipo_cancelamento || "-"}</td>
                     <td>
                       <b className="lot-code">{log.entidade_codigo || log.entidade_id}</b>
                       <div className="table-sub">{log.loteamento?.nome || log.dados_antes?.loteamento_nome || "-"}</div>
@@ -305,11 +331,25 @@ function CancelamentoAdmin({
   );
 }
 
-function MotivosAdmin({ motivos = [], loading, onRefresh, onCreate, onUpdate }) {
-  const [form, setForm] = useState({ nome: "", tipo: "venda", descricao: "", ativo: true });
+// ── Motivos ────────────────────────────────────────────────────────────────────
+
+function MotivosAdmin({ tipos = [], motivos = [], loading, onRefresh, onCreate, onUpdate }) {
+  const [form, setForm] = useState({ nome: "", tipo_ids: [], descricao: "", ativo: true });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
+
+  const tiposAtivos = useMemo(() => tipos.filter((t) => t.ativo), [tipos]);
+
+  function toggleTipoId(id) {
+    setForm((prev) => {
+      const exists = prev.tipo_ids.includes(id);
+      return {
+        ...prev,
+        tipo_ids: exists ? prev.tipo_ids.filter((x) => x !== id) : [...prev.tipo_ids, id],
+      };
+    });
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -324,11 +364,11 @@ function MotivosAdmin({ motivos = [], loading, onRefresh, onCreate, onUpdate }) 
     try {
       await onCreate({
         nome: form.nome.trim(),
-        tipo: form.tipo,
+        tipo_ids: form.tipo_ids,
         descricao: form.descricao.trim() || undefined,
         ativo: form.ativo,
       });
-      setForm({ nome: "", tipo: "venda", descricao: "", ativo: true });
+      setForm({ nome: "", tipo_ids: [], descricao: "", ativo: true });
     } catch (err) {
       setError(err.message || "Erro ao cadastrar motivo");
     } finally {
@@ -354,7 +394,7 @@ function MotivosAdmin({ motivos = [], loading, onRefresh, onCreate, onUpdate }) 
         <div className="admin-panel-head">
           <div>
             <h2>Novo motivo</h2>
-            <p>Motivos ativos aparecem no cancelamento de venda.</p>
+            <p>Motivos ativos aparecem no cancelamento conforme o tipo selecionado.</p>
           </div>
           <button type="button" className="sec-tool-btn" onClick={onRefresh} disabled={loading}>
             Atualizar
@@ -371,15 +411,25 @@ function MotivosAdmin({ motivos = [], loading, onRefresh, onCreate, onUpdate }) 
           />
         </label>
 
-        <label className="admin-field">
-          <span>Tipo</span>
-          <select value={form.tipo} onChange={(event) => setForm((prev) => ({ ...prev, tipo: event.target.value }))}>
-            <option value="venda">Venda</option>
-            <option value="reserva">Reserva</option>
-            <option value="loteamento">Loteamento</option>
-            <option value="geral">Geral</option>
-          </select>
-        </label>
+        <div className="admin-field">
+          <span>Tipos vinculados</span>
+          {tiposAtivos.length === 0 ? (
+            <p className="table-sub">Nenhum tipo cadastrado. Crie tipos na aba Tipos.</p>
+          ) : (
+            <div className="admin-check-group">
+              {tiposAtivos.map((tipo) => (
+                <label key={tipo.id} className="admin-check">
+                  <input
+                    type="checkbox"
+                    checked={form.tipo_ids.includes(tipo.id)}
+                    onChange={() => toggleTipoId(tipo.id)}
+                  />
+                  {tipo.nome}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
 
         <label className="admin-field">
           <span>Descricao</span>
@@ -425,7 +475,7 @@ function MotivosAdmin({ motivos = [], loading, onRefresh, onCreate, onUpdate }) 
               <thead>
                 <tr>
                   <th>Motivo</th>
-                  <th>Tipo</th>
+                  <th>Tipos</th>
                   <th>Status</th>
                   <th />
                 </tr>
@@ -437,7 +487,11 @@ function MotivosAdmin({ motivos = [], loading, onRefresh, onCreate, onUpdate }) 
                       <b>{motivo.nome}</b>
                       <div className="table-sub">{motivo.descricao || "Sem descricao"}</div>
                     </td>
-                    <td>{TIPO_LABELS[motivo.tipo] || motivo.tipo}</td>
+                    <td>
+                      {motivo.tipos?.length > 0
+                        ? motivo.tipos.map((t) => t.nome).join(", ")
+                        : <span className="table-sub">Sem tipo</span>}
+                    </td>
                     <td>
                       <span className={"admin-status-pill" + (motivo.ativo ? " admin-status-active" : "")}>
                         {motivo.ativo ? "Ativo" : "Inativo"}

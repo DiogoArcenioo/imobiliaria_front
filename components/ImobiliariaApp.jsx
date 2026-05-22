@@ -29,6 +29,7 @@ import {
   getCancelamentosLog,
   getClientes,
   getMotivosCancelamento,
+  getTiposCancelamento,
   getUsers,
   getLoteamentos,
   getLoteamento,
@@ -69,6 +70,8 @@ export default function ImobiliariaApp() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [clientes, setClientes] = useState([]);
   const [clientesLoading, setClientesLoading] = useState(false);
+  const [tiposCancelamento, setTiposCancelamento] = useState([]);
+  const [tiposLoading, setTiposLoading] = useState(false);
   const [motivosCancelamento, setMotivosCancelamento] = useState([]);
   const [motivosLoading, setMotivosLoading] = useState(false);
   const [cancelamentosLog, setCancelamentosLog] = useState([]);
@@ -140,6 +143,25 @@ export default function ImobiliariaApp() {
     }
   }, []);
 
+  const fetchTiposCancelamento = useCallback(async () => {
+    if (user?.role !== "admin") {
+      setTiposCancelamento([]);
+      return [];
+    }
+
+    setTiposLoading(true);
+    try {
+      const data = await getTiposCancelamento();
+      setTiposCancelamento(data);
+      return data;
+    } catch (err) {
+      showToast("Erro ao carregar tipos: " + err.message, "error");
+      return [];
+    } finally {
+      setTiposLoading(false);
+    }
+  }, [user?.role]);
+
   const fetchMotivosCancelamento = useCallback(async () => {
     if (user?.role !== "admin") {
       setMotivosCancelamento([]);
@@ -179,9 +201,10 @@ export default function ImobiliariaApp() {
   }, [user?.role]);
 
   useEffect(() => {
+    fetchTiposCancelamento();
     fetchMotivosCancelamento();
     fetchCancelamentosLog();
-  }, [fetchMotivosCancelamento, fetchCancelamentosLog]);
+  }, [fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
 
   // Recarrega um loteamento específico e atualiza a lista local
   const refreshLoteamento = useCallback(async (id) => {
@@ -538,6 +561,9 @@ export default function ImobiliariaApp() {
               onRefreshUsers={fetchUsers}
               onCreateUser={onCreateUser}
               loteamentos={loteamentos}
+              tipos={tiposCancelamento}
+              tiposLoading={tiposLoading}
+              onRefreshTipos={fetchTiposCancelamento}
               motivos={motivosCancelamento}
               motivosLoading={motivosLoading}
               onRefreshMotivos={fetchMotivosCancelamento}
