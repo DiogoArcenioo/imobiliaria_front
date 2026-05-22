@@ -63,7 +63,7 @@ export const MAP_THEMES = {
 };
 
 export const STATUS_COLORS = {
-  disponivel: { fill: '#10b981', stroke: '#059669', label: '#047857', glow: 'rgba(16, 185, 129, .35)' },
+  disponivel: { fill: '#3288e0', stroke: '#1a5fa8', label: '#1a5fa8', glow: 'rgba(50, 136, 224, .35)' },
   reservado: { fill: '#f59e0b', stroke: '#d97706', label: '#b45309', glow: 'rgba(245, 158, 11, .35)' },
   vendido: { fill: '#ef4444', stroke: '#dc2626', label: '#b91c1c', glow: 'rgba(239, 68, 68, .3)' },
 };

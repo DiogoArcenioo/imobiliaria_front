@@ -1,21 +1,24 @@
 import { NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/login'];
+const PROTECTED_PREFIX = '/app';
 
 export function middleware(request) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('auth_token')?.value;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
-  if (!token && !isPublic) {
+  const isProtected = pathname.startsWith(PROTECTED_PREFIX);
+
+  if (!token && isProtected) {
     const url = request.nextUrl.clone();
-    url.pathname = '/login';
+    url.pathname = '/';
+    url.searchParams.set('login', '1');
     return NextResponse.redirect(url);
   }
 
-  if (token && isPublic) {
+  if (pathname.startsWith('/login')) {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    url.pathname = token ? '/app' : '/';
+    if (!token) url.searchParams.set('login', '1');
     return NextResponse.redirect(url);
   }
 

@@ -10,6 +10,8 @@ export const Dashboard = ({
   onOpenLoteamento,
   onOpenEditor,
   onRefresh,
+  canCreateLoteamento = false,
+  canEditLoteamento = false,
 }) => {
   const metrics = computeMetrics(loteamentos);
   const lots = flattenLots(loteamentos);
@@ -27,16 +29,20 @@ export const Dashboard = ({
             {loading
               ? 'Carregando loteamentos...'
               : loteamentos.length === 0
-              ? 'Nenhum loteamento cadastrado. Crie o primeiro para começar.'
+              ? canCreateLoteamento
+                ? 'Nenhum loteamento cadastrado. Crie o primeiro para começar.'
+                : 'Nenhum loteamento cadastrado para esta empresa.'
               : <>Você tem <b>{metrics.total} lotes cadastrados</b> e {metrics.ven} lotes vendidos.</>}
           </p>
         </div>
-        <div className="dash-quick">
-          <button className="qa-btn qa-btn-primary" onClick={() => onOpenEditor?.(null)}>
-            <span className="qa-ic" style={{ color: '#04221a' }}>✎</span>
-            Novo loteamento
-          </button>
-        </div>
+        {canCreateLoteamento && (
+          <div className="dash-quick">
+            <button className="qa-btn qa-btn-primary" onClick={() => onOpenEditor?.(null)}>
+              <span className="qa-ic" style={{ color: '#ffffff' }}>✎</span>
+              Novo loteamento
+            </button>
+          </div>
+        )}
       </header>
 
       <section className="metric-grid">
@@ -92,9 +98,11 @@ export const Dashboard = ({
           ) : loteamentos.length === 0 ? (
             <div className="lot-cards-empty">
               <p>Nenhum loteamento encontrado.</p>
-              <button className="qa-btn qa-btn-primary" style={{ marginTop: 12 }} onClick={() => onOpenEditor?.(null)}>
-                Criar primeiro loteamento
-              </button>
+              {canCreateLoteamento && (
+                <button className="qa-btn qa-btn-primary" style={{ marginTop: 12 }} onClick={() => onOpenEditor?.(null)}>
+                  Criar primeiro loteamento
+                </button>
+              )}
             </div>
           ) : (
             <div className="lot-cards">
@@ -103,7 +111,7 @@ export const Dashboard = ({
                   key={loteamento.id}
                   loteamento={loteamento}
                   onClick={() => onOpenLoteamento(loteamento.id)}
-                  onEdit={() => onOpenEditor?.(loteamento)}
+                  onEdit={canEditLoteamento ? () => onOpenEditor?.(loteamento) : null}
                 />
               ))}
             </div>
@@ -216,7 +224,7 @@ function LoteamentoCard({ loteamento, onClick, onEdit }) {
             <div className="lcr-prog-legend">
               <span><i style={{ background: '#ef4444' }} /> {counts.vendido || 0} vendidos</span>
               {counts.reservado > 0 && <span><i style={{ background: '#f59e0b' }} /> {counts.reservado} reservados</span>}
-              <span><i style={{ background: '#10b981' }} /> {counts.disponivel || 0} disponíveis</span>
+              <span><i style={{ background: '#3288e0' }} /> {counts.disponivel || 0} disponíveis</span>
             </div>
           </div>
         )}

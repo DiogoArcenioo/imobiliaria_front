@@ -36,7 +36,7 @@ export default function LoginPage() {
         // Auto-login após registro
         await login(email, password);
       }
-      router.replace('/');
+      router.replace('/app');
     } catch (err) {
       setError(err.message ?? 'Erro desconhecido');
     } finally {
@@ -47,7 +47,7 @@ export default function LoginPage() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0f172a',
+      background: '#f0f4f9',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -57,27 +57,28 @@ export default function LoginPage() {
         width: '100%',
         maxWidth: 380,
         padding: '2.5rem',
-        background: '#1e293b',
+        background: '#ffffff',
         borderRadius: 16,
-        border: '1px solid #334155',
-        boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
+        border: '1px solid #ccd5e0',
+        boxShadow: '0 25px 50px rgba(0, 30, 80, 0.14)',
       }}>
         {/* Logo / título */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div style={{
             width: 48, height: 48,
-            background: '#10b981',
+            background: '#3288e0',
             borderRadius: 12,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 1rem',
             fontSize: 24,
+            color: '#fff',
           }}>
             T
           </div>
-          <h1 style={{ color: '#f1f5f9', fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
+          <h1 style={{ color: '#0d1b3e', fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
             Terreno
           </h1>
-          <p style={{ color: '#64748b', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
+          <p style={{ color: '#5a7898', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
             Loteamentos e lotes
           </p>
         </div>
@@ -85,7 +86,7 @@ export default function LoginPage() {
         {/* Tabs login / registro */}
         <div style={{
           display: 'flex',
-          background: '#0f172a',
+          background: '#e8edf4',
           borderRadius: 8,
           padding: 4,
           marginBottom: '1.5rem',
@@ -103,8 +104,8 @@ export default function LoginPage() {
                 fontSize: '0.875rem',
                 fontWeight: 500,
                 transition: 'all 0.15s',
-                background: mode === m ? '#10b981' : 'transparent',
-                color: mode === m ? '#fff' : '#94a3b8',
+                background: mode === m ? '#3288e0' : 'transparent',
+                color: mode === m ? '#fff' : '#5a7898',
               }}
             >
               {m === 'login' ? 'Entrar' : 'Criar conta'}
@@ -114,7 +115,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', color: '#94a3b8', fontSize: '0.8125rem', marginBottom: 6 }}>
+            <label style={{ display: 'block', color: '#5a7898', fontSize: '0.8125rem', marginBottom: 6 }}>
               E-mail
             </label>
             <input
@@ -127,10 +128,10 @@ export default function LoginPage() {
               style={{
                 width: '100%',
                 padding: '0.625rem 0.875rem',
-                background: '#0f172a',
-                border: '1px solid #334155',
+                background: '#f0f4f9',
+                border: '1px solid #ccd5e0',
                 borderRadius: 8,
-                color: '#f1f5f9',
+                color: '#0d1b3e',
                 fontSize: '0.9375rem',
                 outline: 'none',
                 boxSizing: 'border-box',
@@ -139,7 +140,7 @@ export default function LoginPage() {
           </div>
 
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', color: '#94a3b8', fontSize: '0.8125rem', marginBottom: 6 }}>
+            <label style={{ display: 'block', color: '#5a7898', fontSize: '0.8125rem', marginBottom: 6 }}>
               Senha
             </label>
             <input
@@ -153,10 +154,10 @@ export default function LoginPage() {
               style={{
                 width: '100%',
                 padding: '0.625rem 0.875rem',
-                background: '#0f172a',
-                border: '1px solid #334155',
+                background: '#f0f4f9',
+                border: '1px solid #ccd5e0',
                 borderRadius: 8,
-                color: '#f1f5f9',
+                color: '#0d1b3e',
                 fontSize: '0.9375rem',
                 outline: 'none',
                 boxSizing: 'border-box',
@@ -166,11 +167,11 @@ export default function LoginPage() {
 
           {error && (
             <div style={{
-              background: '#450a0a',
-              border: '1px solid #dc2626',
+              background: '#fff0f0',
+              border: '1px solid #fca5a5',
               borderRadius: 8,
               padding: '0.625rem 0.875rem',
-              color: '#fca5a5',
+              color: '#dc2626',
               fontSize: '0.875rem',
               marginBottom: '1rem',
             }}>
@@ -184,7 +185,7 @@ export default function LoginPage() {
             style={{
               width: '100%',
               padding: '0.75rem',
-              background: loading ? '#059669' : '#10b981',
+              background: loading ? '#1a5fa8' : '#3288e0',
               color: '#fff',
               border: 'none',
               borderRadius: 8,
@@ -198,6 +199,20 @@ export default function LoginPage() {
             {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
           </button>
         </form>
+
+        <div style={{
+          marginTop: '1.5rem',
+          paddingTop: '1.25rem',
+          borderTop: '1px solid #e8edf4',
+          textAlign: 'center',
+        }}>
+          <p style={{ margin: 0, fontSize: 13, color: '#5a7898' }}>
+            Primeira vez aqui?{' '}
+            <a href="/cadastro" style={{ color: '#3288e0', fontWeight: 700, textDecoration: 'none' }}>
+              Cadastrar empresa
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );

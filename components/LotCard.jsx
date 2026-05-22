@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { fmtBRL, statusLabel as getStatusLabel } from '../lib/data';
+import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { STATUS_COLORS } from './MapView';
 
 export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange }) => {
@@ -20,21 +21,19 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
     ? { left: position.left, top: position.top, transform: position.transform }
     : {};
 
-  const handleAction = async () => {
+  const handleAction = async (nextStatus) => {
     if (!onStatusChange || lot.status === 'vendido') return;
     setActionLoading(true);
     try {
-      await onStatusChange('vendido');
+      await onStatusChange(nextStatus);
     } finally {
       setActionLoading(false);
     }
   };
 
-  const actionLabel = actionLoading
-    ? 'Salvando...'
-    : lot.status === 'vendido'
-    ? 'Vendido'
-    : 'Vender lote';
+  const canReserve = lot.status === 'disponivel';
+  const canSell = lot.status !== 'vendido';
+  const sellLabel = actionLoading ? 'Salvando...' : lot.status === 'vendido' ? 'Vendido' : 'Vender lote';
 
   if (variant === 'compacto') {
     return (
@@ -66,13 +65,23 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
             <div className="lcc-cell-v">{lot.fundo || '—'} {lot.fundo ? 'm' : ''}</div>
           </div>
         </div>
+        <ClientLinkInfo lot={lot} compact />
         <div className="lcc-actions">
+          {canReserve && (
+            <button
+              className="lcc-btn lcc-btn-ghost"
+              disabled={actionLoading}
+              onClick={() => handleAction('reservado')}
+            >
+              Reservar
+            </button>
+          )}
           <button
             className="lcc-btn lcc-btn-primary"
-            disabled={actionLoading || lot.status === 'vendido'}
-            onClick={handleAction}
+            disabled={actionLoading || !canSell}
+            onClick={() => handleAction('vendido')}
           >
-            {actionLabel}
+            {sellLabel}
           </button>
         </div>
       </div>
@@ -133,13 +142,23 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
               </div>
             )}
           </div>
+          <ClientLinkInfo lot={lot} />
           <div className="lcp-actions">
+            {canReserve && (
+              <button
+                className="lcp-btn lcp-btn-ghost"
+                disabled={actionLoading}
+                onClick={() => handleAction('reservado')}
+              >
+                Reservar lote
+              </button>
+            )}
             <button
               className="lcp-btn lcp-btn-primary"
-              disabled={actionLoading || lot.status === 'vendido'}
-              onClick={handleAction}
+              disabled={actionLoading || !canSell}
+              onClick={() => handleAction('vendido')}
             >
-              {actionLabel}
+              {sellLabel}
             </button>
           </div>
         </div>
@@ -198,15 +217,53 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
         </div>
       )}
 
+      <ClientLinkInfo lot={lot} />
+
       <div className="lcd-actions">
+        {canReserve && (
+          <button
+            className="lcd-btn lcd-btn-ghost"
+            disabled={actionLoading}
+            onClick={() => handleAction('reservado')}
+          >
+            Reservar lote
+          </button>
+        )}
         <button
           className="lcd-btn lcd-btn-primary"
-          disabled={actionLoading || lot.status === 'vendido'}
-          onClick={handleAction}
+          disabled={actionLoading || !canSell}
+          onClick={() => handleAction('vendido')}
         >
-          {actionLabel}
+          {sellLabel}
         </button>
       </div>
     </div>
   );
 };
+
+function ClientLinkInfo({ lot, compact = false }) {
+  if (!['vendido', 'reservado'].includes(lot.status)) return null;
+
+  const user = lot.cliente_vinculado_por_usuario;
+  const userName = user?.nome || user?.login || user?.email || (lot.cliente_vinculado_por ? `Usuario ${lot.cliente_vinculado_por}` : 'Nao informado');
+
+  return (
+    <div className={compact ? 'lot-client-info lot-client-info-compact' : 'lot-client-info'}>
+      <div>
+        <span>Cliente vinculado</span>
+        <b>{lot.cliente?.nome || 'Cliente nao informado'}</b>
+        {lot.cliente && (
+          <small>
+            ID {lot.cliente.id} - {formatCpfCnpj(lot.cliente.cpf_cnpj)}
+            {lot.cliente.celular ? ` - ${formatPhone(lot.cliente.celular)}` : ''}
+          </small>
+        )}
+      </div>
+      <div>
+        <span>Vinculado por</span>
+        <b>{userName}</b>
+        {user?.email && <small>{user.email}</small>}
+      </div>
+    </div>
+  );
+}

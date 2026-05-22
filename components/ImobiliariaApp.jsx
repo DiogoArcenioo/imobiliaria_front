@@ -7,6 +7,9 @@ import { Dashboard } from "./Dashboard";
 import { LotCard } from "./LotCard";
 import { MapEditor } from "./MapEditor";
 import { MapView, STATUS_COLORS } from "./MapView";
+import { ClienteManagement, formatCpfCnpj } from "./ClienteManagement";
+import { SaleDialog } from "./SaleDialog";
+import { AdminPanel } from "./AdminPanel";
 import {
   TweakColor,
   TweakRadio,
@@ -16,12 +19,21 @@ import {
   useTweaks,
 } from "./TweaksPanel";
 import {
+  createCliente,
+  createMotivoCancelamento,
+  createUser,
+  cancelarVenda,
   createLoteamento,
   computeMetrics,
   flattenLots,
+  getCancelamentosLog,
+  getClientes,
+  getMotivosCancelamento,
+  getUsers,
   getLoteamentos,
   getLoteamento,
   saveEditor,
+  updateMotivoCancelamento,
   updateLoteStatus,
 } from "../lib/api";
 import { fmtBRL, fmtBRLShort, statusLabel } from "../lib/data";
@@ -30,10 +42,14 @@ import { useAuth } from "../context/AuthContext";
 const TWEAK_DEFAULTS = {
   mapTheme: "claro",
   cardVariant: "detalhado",
-  accent: "#10b981",
+  accent: "#3288e0",
   showPrices: true,
   compactSidebar: false,
 };
+
+const canCreateLoteamentoByRole = (role) => role === "admin";
+const canEditLoteamentoByRole = (role) => role === "admin" || role === "gerente";
+const canSellByRole = (role) => ["admin", "gerente", "vendedor"].includes(role);
 
 export default function ImobiliariaApp() {
   const { user, logout } = useAuth();
@@ -49,6 +65,16 @@ export default function ImobiliariaApp() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [usuarios, setUsuarios] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [clientes, setClientes] = useState([]);
+  const [clientesLoading, setClientesLoading] = useState(false);
+  const [motivosCancelamento, setMotivosCancelamento] = useState([]);
+  const [motivosLoading, setMotivosLoading] = useState(false);
+  const [cancelamentosLog, setCancelamentosLog] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [saleDraft, setSaleDraft] = useState(null);
+  const [clienteReturnSale, setClienteReturnSale] = useState(null);
 
   const mapContainerRef = useRef(null);
 
@@ -56,7 +82,7 @@ export default function ImobiliariaApp() {
   useEffect(() => {
     const handleUnauthorized = () => {
       logout();
-      router.replace("/login");
+      router.replace("/?login=1");
     };
     window.addEventListener("auth:unauthorized", handleUnauthorized);
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
@@ -79,6 +105,84 @@ export default function ImobiliariaApp() {
     fetchLoteamentos();
   }, [fetchLoteamentos]);
 
+  const fetchUsers = useCallback(async () => {
+    if (user?.role !== "admin") {
+      setUsuarios([]);
+      return;
+    }
+
+    setUsersLoading(true);
+    try {
+      const data = await getUsers();
+      setUsuarios(data);
+    } catch (err) {
+      showToast("Erro ao carregar usuarios: " + err.message, "error");
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const fetchClientes = useCallback(async (search = "") => {
+    setClientesLoading(true);
+    try {
+      const data = await getClientes(search);
+      setClientes(data);
+      return data;
+    } catch (err) {
+      showToast("Erro ao carregar clientes: " + err.message, "error");
+      return [];
+    } finally {
+      setClientesLoading(false);
+    }
+  }, []);
+
+  const fetchMotivosCancelamento = useCallback(async () => {
+    if (user?.role !== "admin") {
+      setMotivosCancelamento([]);
+      return [];
+    }
+
+    setMotivosLoading(true);
+    try {
+      const data = await getMotivosCancelamento();
+      setMotivosCancelamento(data);
+      return data;
+    } catch (err) {
+      showToast("Erro ao carregar motivos: " + err.message, "error");
+      return [];
+    } finally {
+      setMotivosLoading(false);
+    }
+  }, [user?.role]);
+
+  const fetchCancelamentosLog = useCallback(async () => {
+    if (user?.role !== "admin") {
+      setCancelamentosLog([]);
+      return [];
+    }
+
+    setLogsLoading(true);
+    try {
+      const data = await getCancelamentosLog();
+      setCancelamentosLog(data);
+      return data;
+    } catch (err) {
+      showToast("Erro ao carregar cancelamentos: " + err.message, "error");
+      return [];
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [user?.role]);
+
+  useEffect(() => {
+    fetchMotivosCancelamento();
+    fetchCancelamentosLog();
+  }, [fetchMotivosCancelamento, fetchCancelamentosLog]);
+
   // Recarrega um loteamento específico e atualiza a lista local
   const refreshLoteamento = useCallback(async (id) => {
     try {
@@ -97,12 +201,78 @@ export default function ImobiliariaApp() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const onCreateUser = async (data) => {
+    const created = await createUser(data);
+    setUsuarios((prev) =>
+      [created, ...prev].sort((a, b) =>
+        (a.nome || a.email || "").localeCompare(b.nome || b.email || "", "pt-BR")
+      )
+    );
+    showToast("Usuario cadastrado com sucesso");
+    return created;
+  };
+
+  const onCreateCliente = async (data) => {
+    const created = await createCliente(data);
+    setClientes((prev) =>
+      [created, ...prev].sort((a, b) =>
+        (a.nome || "").localeCompare(b.nome || "", "pt-BR")
+      )
+    );
+    showToast("Cliente cadastrado com sucesso");
+    return created;
+  };
+
+  const onCreateMotivoCancelamento = async (data) => {
+    const created = await createMotivoCancelamento(data);
+    setMotivosCancelamento((prev) =>
+      [created, ...prev].sort((a, b) =>
+        (a.nome || "").localeCompare(b.nome || "", "pt-BR")
+      )
+    );
+    showToast("Motivo cadastrado com sucesso");
+    return created;
+  };
+
+  const onUpdateMotivoCancelamento = async (id, data) => {
+    const updated = await updateMotivoCancelamento(id, data);
+    setMotivosCancelamento((prev) =>
+      prev
+        .map((item) => (item.id === updated.id ? updated : item))
+        .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"))
+    );
+    showToast("Motivo atualizado");
+    return updated;
+  };
+
+  const onCancelarVenda = async (data) => {
+    const result = await cancelarVenda(data);
+    const loteamentoId = result?.lote?.loteamento_id;
+    if (loteamentoId) {
+      await refreshLoteamento(loteamentoId);
+    } else {
+      await fetchLoteamentos();
+    }
+    await fetchCancelamentosLog();
+    showToast("Venda cancelada e removida dos indicadores");
+    return result;
+  };
+
   // ── Navegação ───────────────────────────────────────────────────────────
 
   const loteamento = activeLoteamentoId
     ? loteamentos.find((l) => l.id === activeLoteamentoId) || null
     : null;
   const metrics = computeMetrics(loteamentos);
+  const canCreateLoteamento = canCreateLoteamentoByRole(user?.role);
+  const canEditLoteamento = canEditLoteamentoByRole(user?.role);
+  const canSellLot = canSellByRole(user?.role);
+
+  useEffect(() => {
+    if (view === "admin" && user?.role !== "admin") {
+      setView("dashboard");
+    }
+  }, [view, user?.role]);
 
   const onOpenLoteamento = (id) => {
     setActiveLoteamentoId(id);
@@ -118,11 +288,31 @@ export default function ImobiliariaApp() {
   // ── Editor ──────────────────────────────────────────────────────────────
 
   const onOpenEditor = (existing) => {
+    if (!existing && !canCreateLoteamento) {
+      showToast("Apenas administradores podem criar loteamentos", "error");
+      return;
+    }
+
+    if (existing && !canEditLoteamento) {
+      showToast("Seu usuario pode apenas visualizar e vender lotes", "error");
+      return;
+    }
+
     setEditorLoteamento(existing || null);
     setView("editor");
   };
 
   const onSaveEditor = async (shapes, meta) => {
+    if (!editorLoteamento?.id && !canCreateLoteamento) {
+      showToast("Apenas administradores podem criar loteamentos", "error");
+      return;
+    }
+
+    if (editorLoteamento?.id && !canEditLoteamento) {
+      showToast("Seu usuario nao pode editar loteamentos", "error");
+      return;
+    }
+
     setSaving(true);
     try {
       let targetId = editorLoteamento?.id;
@@ -155,6 +345,11 @@ export default function ImobiliariaApp() {
   };
 
   const onNavigate = (id) => {
+    if (id === "admin" && user?.role !== "admin") {
+      showToast("Apenas administradores podem acessar o Admin", "error");
+      return;
+    }
+
     if (id === "dashboard" || id === "loteamentos") {
       setView(id);
       setSelectedLot(null);
@@ -166,19 +361,52 @@ export default function ImobiliariaApp() {
 
   // Ações nos lotes
 
-  const onLotStatusChange = async (lot, newStatus, loteamentoId = activeLoteamentoId) => {
+  const openSaleDialog = (lot, loteamentoId = activeLoteamentoId, targetStatus = "vendido") => {
     if (!lot.db_id) return;
+    if (!canSellLot) {
+      showToast("Seu usuario nao pode vender lotes", "error");
+      return;
+    }
+    setSaleDraft({ lot, loteamentoId, returnView: view, cliente: null, targetStatus });
+    fetchClientes("");
+  };
+
+  const confirmLotStatus = async (cliente) => {
+    if (!saleDraft?.lot?.db_id || !cliente?.id) return;
     try {
-      await updateLoteStatus(lot.db_id, newStatus);
+      const { lot, loteamentoId, targetStatus = "vendido" } = saleDraft;
+      await updateLoteStatus(lot.db_id, targetStatus, cliente.id);
       const updated = await refreshLoteamento(loteamentoId);
       if (updated && selectedLot && loteamentoId === activeLoteamentoId) {
         const updatedLot = (updated.lots || []).find((l) => l.db_id === lot.db_id);
         if (updatedLot) setSelectedLot((prev) => ({ ...prev, lot: updatedLot }));
       }
-      showToast(`Lote ${lot.id} marcado como vendido`);
+      setSaleDraft(null);
+      showToast(
+        targetStatus === "reservado"
+          ? `Lote ${lot.id} reservado para ${cliente.nome}`
+          : `Lote ${lot.id} vendido para ${cliente.nome}`
+      );
     } catch (err) {
       showToast("Erro: " + err.message, "error");
     }
+  };
+
+  const goToClienteCadastroFromSale = () => {
+    setClienteReturnSale(saleDraft);
+    setSaleDraft(null);
+    setView("clientes");
+    fetchClientes("");
+  };
+
+  const finishClienteCadastroFromSale = (cliente) => {
+    if (!clienteReturnSale) return;
+    const nextSaleDraft = { ...clienteReturnSale, cliente };
+    if (nextSaleDraft.loteamentoId) setActiveLoteamentoId(nextSaleDraft.loteamentoId);
+    setView(nextSaleDraft.returnView || "lotes");
+    setSaleDraft(nextSaleDraft);
+    setClienteReturnSale(null);
+    fetchClientes("");
   };
 
   // ── Click no lote (posicionamento do card flutuante) ──────────────────
@@ -235,7 +463,11 @@ export default function ImobiliariaApp() {
           loteamentos: loteamentos.length,
           lotes: metrics.total,
           vendas: metrics.ven,
+          clientes: clientes.length,
+          usuarios: usuarios.length,
         }}
+        user={user}
+        onLogout={() => { logout(); router.replace('/'); }}
       />
       <main className="main">
         {view !== "editor" && (
@@ -243,8 +475,6 @@ export default function ImobiliariaApp() {
             view={view}
             loteamentoNome={loteamento?.nome}
             onBack={onBackToDash}
-            userEmail={user?.email}
-            onLogout={() => { logout(); router.replace('/login'); }}
           />
         )}
         <div className="content">
@@ -255,6 +485,8 @@ export default function ImobiliariaApp() {
               onOpenLoteamento={onOpenLoteamento}
               onOpenEditor={onOpenEditor}
               onRefresh={fetchLoteamentos}
+              canCreateLoteamento={canCreateLoteamento}
+              canEditLoteamento={canEditLoteamento}
             />
           )}
 
@@ -263,8 +495,9 @@ export default function ImobiliariaApp() {
               loteamentos={loteamentos}
               loading={loading}
               onOpenLoteamento={onOpenLoteamento}
-              onSellLot={(lot) => onLotStatusChange(lot, "vendido", lot.loteamentoId)}
+              onStatusAction={(lot, status) => openSaleDialog(lot, lot.loteamentoId, status)}
               onOpenEditor={onOpenEditor}
+              canCreateLoteamento={canCreateLoteamento}
             />
           )}
 
@@ -273,6 +506,47 @@ export default function ImobiliariaApp() {
               loteamentos={loteamentos}
               loading={loading}
               onOpenLoteamento={onOpenLoteamento}
+            />
+          )}
+
+          {view === "clientes" && (
+            <ClienteManagement
+              clientes={clientes}
+              loading={clientesLoading}
+              onRefresh={fetchClientes}
+              onCreate={onCreateCliente}
+              saleContext={clienteReturnSale}
+              onCancelSaleContext={(createdCliente) => {
+                if (createdCliente) {
+                  finishClienteCadastroFromSale(createdCliente);
+                  return;
+                }
+                if (clienteReturnSale) {
+                  setSaleDraft(clienteReturnSale);
+                  setView(clienteReturnSale.returnView || "lotes");
+                  setClienteReturnSale(null);
+                }
+              }}
+            />
+          )}
+
+          {view === "admin" && user?.role === "admin" && (
+            <AdminPanel
+              user={user}
+              users={usuarios}
+              usersLoading={usersLoading}
+              onRefreshUsers={fetchUsers}
+              onCreateUser={onCreateUser}
+              loteamentos={loteamentos}
+              motivos={motivosCancelamento}
+              motivosLoading={motivosLoading}
+              onRefreshMotivos={fetchMotivosCancelamento}
+              onCreateMotivo={onCreateMotivoCancelamento}
+              onUpdateMotivo={onUpdateMotivoCancelamento}
+              cancelamentosLog={cancelamentosLog}
+              logsLoading={logsLoading}
+              onRefreshLogs={fetchCancelamentosLog}
+              onCancelarVenda={onCancelarVenda}
             />
           )}
 
@@ -291,9 +565,7 @@ export default function ImobiliariaApp() {
                   variant={t.cardVariant}
                   position={selectedLot.position}
                   onClose={() => setSelectedLot(null)}
-                  onStatusChange={(newStatus) =>
-                    onLotStatusChange(selectedLot.lot, newStatus)
-                  }
+                  onStatusChange={(status) => openSaleDialog(selectedLot.lot, activeLoteamentoId, status)}
                 />
               )}
               <LoteamentoSwitcher
@@ -301,6 +573,7 @@ export default function ImobiliariaApp() {
                 current={loteamento}
                 onSwitch={(id) => onOpenLoteamento(id)}
                 onEdit={() => onOpenEditor(loteamento)}
+                canEditLoteamento={canEditLoteamento}
               />
             </div>
           )}
@@ -321,18 +594,35 @@ export default function ImobiliariaApp() {
             view !== "map" &&
             view !== "lotes" &&
             view !== "vendas" &&
+            view !== "clientes" &&
+            view !== "admin" &&
             view !== "editor" && <EmptyState view={view} />}
         </div>
       </main>
+
+      {saleDraft && (
+        <SaleDialog
+          lot={saleDraft.lot}
+          loteamento={loteamentos.find((item) => item.id === saleDraft.loteamentoId)}
+          actionStatus={saleDraft.targetStatus}
+          clientes={clientes}
+          loading={clientesLoading}
+          initialClient={saleDraft.cliente}
+          onSearch={fetchClientes}
+          onClose={() => setSaleDraft(null)}
+          onCreateClient={goToClienteCadastroFromSale}
+          onConfirm={confirmLotStatus}
+        />
+      )}
 
       {toast && (
         <div className={"toast" + (toast.type === "error" ? " toast-error" : "")}>
           {toast.type !== "error" ? (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="7" fill="#10b981" />
+              <circle cx="8" cy="8" r="7" fill="#3288e0" />
               <path
                 d="M5 8l2 2 4-4"
-                stroke="#04221a"
+                stroke="#ffffff"
                 strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -375,7 +665,7 @@ export default function ImobiliariaApp() {
           label="Cor de destaque"
           value={t.accent}
           options={[
-            "#10b981",
+            "#3288e0",
             "#2563eb",
             "#a16207",
             "#9333ea",
@@ -393,7 +683,7 @@ export default function ImobiliariaApp() {
   );
 }
 
-function LotsView({ loteamentos, loading, onOpenLoteamento, onSellLot, onOpenEditor }) {
+function LotsView({ loteamentos, loading, onOpenLoteamento, onStatusAction, onOpenEditor, canCreateLoteamento }) {
   const lots = flattenLots(loteamentos);
 
   return (
@@ -404,10 +694,12 @@ function LotsView({ loteamentos, loading, onOpenLoteamento, onSellLot, onOpenEdi
           <h1 className="list-page-title">Lotes cadastrados</h1>
           <p className="dash-sub">Controle o estoque e registre vendas a partir dos lotes cadastrados.</p>
         </div>
-        <button className="qa-btn qa-btn-primary" onClick={() => onOpenEditor?.(null)}>
-          <span className="qa-ic" style={{ color: '#04221a' }}>✎</span>
-          Novo loteamento
-        </button>
+        {canCreateLoteamento && (
+          <button className="qa-btn qa-btn-primary" onClick={() => onOpenEditor?.(null)}>
+            <span className="qa-ic" style={{ color: '#ffffff' }}>✎</span>
+            Novo loteamento
+          </button>
+        )}
       </header>
 
       {loading ? (
@@ -415,10 +707,12 @@ function LotsView({ loteamentos, loading, onOpenLoteamento, onSellLot, onOpenEdi
       ) : lots.length === 0 ? (
         <div className="list-empty">
           <p>Nenhum lote cadastrado.</p>
-          <button className="qa-btn qa-btn-primary" onClick={() => onOpenEditor?.(null)}>Criar loteamento</button>
+          {canCreateLoteamento && (
+            <button className="qa-btn qa-btn-primary" onClick={() => onOpenEditor?.(null)}>Criar loteamento</button>
+          )}
         </div>
       ) : (
-        <LotTable lots={lots} onOpenLoteamento={onOpenLoteamento} onSellLot={onSellLot} />
+        <LotTable lots={lots} onOpenLoteamento={onOpenLoteamento} onStatusAction={onStatusAction} />
       )}
     </section>
   );
@@ -450,7 +744,7 @@ function SalesView({ loteamentos, loading, onOpenLoteamento }) {
   );
 }
 
-function LotTable({ lots, onOpenLoteamento, onSellLot, salesOnly = false }) {
+function LotTable({ lots, onOpenLoteamento, onStatusAction, salesOnly = false }) {
   return (
     <div className="lot-table-wrap">
       <table className="lot-table">
@@ -462,6 +756,7 @@ function LotTable({ lots, onOpenLoteamento, onSellLot, salesOnly = false }) {
             <th>Área</th>
             <th>Valor</th>
             <th>Status</th>
+            {salesOnly && <th>id_cliente</th>}
             <th />
           </tr>
         </thead>
@@ -479,17 +774,36 @@ function LotTable({ lots, onOpenLoteamento, onSellLot, salesOnly = false }) {
               <td>{lot.area ? `${lot.area} m²` : '—'}</td>
               <td>{fmtBRL(lot.preco)}</td>
               <td><StatusBadge status={lot.status} /></td>
+              {salesOnly && (
+                <td>
+                  <b className="lot-code">{lot.cliente_id || '-'}</b>
+                  <div className="table-sub">
+                    {lot.cliente ? `${lot.cliente.nome} - ${formatCpfCnpj(lot.cliente.cpf_cnpj)}` : 'Cliente nao vinculado'}
+                  </div>
+                </td>
+              )}
               <td>
                 <div className="table-actions">
                   <button className="table-action table-action-ghost" onClick={() => onOpenLoteamento?.(lot.loteamentoId)}>Mapa</button>
                   {!salesOnly && (
-                    <button
-                      className="table-action"
-                      disabled={lot.status === "vendido" || !lot.db_id}
-                      onClick={() => onSellLot?.(lot)}
-                    >
-                      {lot.status === "vendido" ? "Vendido" : "Vender"}
-                    </button>
+                    <>
+                      {lot.status === "disponivel" && (
+                        <button
+                          className="table-action table-action-ghost"
+                          disabled={!lot.db_id}
+                          onClick={() => onStatusAction?.(lot, "reservado")}
+                        >
+                          Reservar
+                        </button>
+                      )}
+                      <button
+                        className="table-action"
+                        disabled={lot.status === "vendido" || !lot.db_id}
+                        onClick={() => onStatusAction?.(lot, "vendido")}
+                      >
+                        {lot.status === "vendido" ? "Vendido" : "Vender"}
+                      </button>
+                    </>
                   )}
                 </div>
               </td>
@@ -511,7 +825,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function LoteamentoSwitcher({ loteamentos, current, onSwitch, onEdit }) {
+function LoteamentoSwitcher({ loteamentos, current, onSwitch, onEdit, canEditLoteamento }) {
   return (
     <div className="lt-switcher">
       <div className="lts-label">LOTEAMENTOS</div>
@@ -530,19 +844,23 @@ function LoteamentoSwitcher({ loteamentos, current, onSwitch, onEdit }) {
           </div>
         </button>
       ))}
-      <div className="lts-divider" />
-      <button className="lts-edit" onClick={onEdit}>
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-          <path
-            d="M11 2l3 3-8 8H3v-3l8-8z"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </svg>
-        Editar mapa do loteamento
-      </button>
+      {canEditLoteamento && (
+        <>
+          <div className="lts-divider" />
+          <button className="lts-edit" onClick={onEdit}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M11 2l3 3-8 8H3v-3l8-8z"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            </svg>
+            Editar mapa do loteamento
+          </button>
+        </>
+      )}
     </div>
   );
 }

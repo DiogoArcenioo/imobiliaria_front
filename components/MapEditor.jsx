@@ -970,13 +970,13 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
               <g className="ed-poly-progress">
                 <polygon
                   points={[...polyPoints, mousePos || polyPoints[polyPoints.length-1]].map(p => p.join(',')).join(' ')}
-                  fill="rgba(16, 185, 129, 0.18)"
-                  stroke="#10b981"
+                  fill="rgba(50, 136, 224, 0.18)"
+                  stroke="#3288e0"
                   strokeWidth="1.5"
                   strokeDasharray="6 4"
                 />
                 {polyPoints.map((p, i) => (
-                  <circle key={i} cx={p[0]} cy={p[1]} r="5" fill="#10b981" stroke="#fff" strokeWidth="1.5" />
+                  <circle key={i} cx={p[0]} cy={p[1]} r="5" fill="#3288e0" stroke="#fff" strokeWidth="1.5" />
                 ))}
               </g>
             )}
@@ -1149,7 +1149,7 @@ function RoadSurfaceLayer({ shapes, selectedId }) {
           key={`${shape.id}-selected`}
           d={d}
           fill="none"
-          stroke="#10b981"
+          stroke="#3288e0"
           strokeWidth="1.5"
           strokeDasharray="7 5"
           strokeLinecap="round"
@@ -1223,7 +1223,7 @@ function RoadNetworkOverlay({ graph, selectedId, activeSnap }) {
               y1={control.from[1]}
               x2={control.point[0]}
               y2={control.point[1]}
-              stroke="#059669"
+              stroke="#1a5fa8"
               strokeWidth="1"
               strokeDasharray="5 5"
             />
@@ -1234,7 +1234,7 @@ function RoadNetworkOverlay({ graph, selectedId, activeSnap }) {
               y1={control.point[1]}
               x2={control.to[0]}
               y2={control.to[1]}
-              stroke="#059669"
+              stroke="#1a5fa8"
               strokeWidth="1"
               strokeDasharray="5 5"
             />
@@ -1246,7 +1246,7 @@ function RoadNetworkOverlay({ graph, selectedId, activeSnap }) {
             height="8"
             rx="2"
             fill="#ffffff"
-            stroke="#059669"
+            stroke="#1a5fa8"
             strokeWidth="1.5"
             transform={`rotate(45 ${control.point[0]} ${control.point[1]})`}
           />
@@ -1263,13 +1263,13 @@ function RoadNetworkOverlay({ graph, selectedId, activeSnap }) {
               cx={node.point[0]}
               cy={node.point[1]}
               r={radius + 4}
-              fill={active ? 'rgba(16,185,129,0.18)' : 'rgba(255,255,255,0.75)'}
+              fill={active ? 'rgba(50,136,224,0.18)' : 'rgba(255,255,255,0.75)'}
             />
             <circle
               cx={node.point[0]}
               cy={node.point[1]}
               r={radius}
-              fill={active ? '#10b981' : selected ? '#0f766e' : '#0d9488'}
+              fill={active ? '#3288e0' : selected ? '#162347' : '#1e2f58'}
               stroke="#ffffff"
               strokeWidth="2"
             />
@@ -1280,7 +1280,7 @@ function RoadNetworkOverlay({ graph, selectedId, activeSnap }) {
                 fontSize="11"
                 fontFamily="Manrope"
                 fontWeight="800"
-                fill="#047857"
+                fill="#0d3a80"
                 paintOrder="stroke"
                 stroke="#ffffff"
                 strokeWidth="4"
@@ -1298,7 +1298,7 @@ function RoadNetworkOverlay({ graph, selectedId, activeSnap }) {
 // Render a single shape in the editor
 function EditorShape({ shape, selected }) {
   const STATUS_FILL = {
-    disponivel: '#10b981',
+    disponivel: '#3288e0',
     reservado: '#f59e0b',
     vendido: '#ef4444',
   };
@@ -1313,7 +1313,7 @@ function EditorShape({ shape, selected }) {
           <path
             d={d}
             fill="none"
-            stroke={selected ? '#10b981' : '#cdd1c6'}
+            stroke={selected ? '#3288e0' : '#cdd1c6'}
             strokeWidth={width + (selected ? 5 : 2)}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -1343,7 +1343,7 @@ function EditorShape({ shape, selected }) {
           )}
           {selected && (
             <g pointerEvents="none">
-              <path d={d} fill="none" stroke="#10b981" strokeWidth="1.5" strokeDasharray="7 5" />
+              <path d={d} fill="none" stroke="#3288e0" strokeWidth="1.5" strokeDasharray="7 5" />
             </g>
           )}
         </g>
@@ -1352,7 +1352,7 @@ function EditorShape({ shape, selected }) {
     return (
       <g data-shape-id={shape.id}>
         <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h}
-          fill="#ffffff" stroke={selected ? '#10b981' : '#cdd1c6'} strokeWidth={selected ? 2.5 : 1} />
+          fill="#ffffff" stroke={selected ? '#3288e0' : '#cdd1c6'} strokeWidth={selected ? 2.5 : 1} />
         {shape.label && shape.name && (
           <text x={shape.x + shape.w/2} y={shape.y + shape.h/2 + 4} fontSize="13" textAnchor="middle"
             fontFamily="Manrope" fontWeight="500" fill="#5a6358" letterSpacing="0.05em" pointerEvents="none">
@@ -1367,7 +1367,7 @@ function EditorShape({ shape, selected }) {
     return (
       <g data-shape-id={shape.id}>
         <rect x={shape.x + 6} y={shape.y + 6} width={shape.w - 12} height={shape.h - 12}
-          fill="#c5d4b1" stroke={selected ? '#10b981' : '#a8b89a'} strokeWidth={selected ? 2.5 : 1} rx="4" />
+          fill="#c5d4b1" stroke={selected ? '#3288e0' : '#a8b89a'} strokeWidth={selected ? 2.5 : 1} rx="4" />
         <text x={shape.x + shape.w/2} y={shape.y + shape.h/2 + 4} fontSize="12" textAnchor="middle"
           fontFamily="Manrope" fontWeight="600" fill="#5a6a4a" pointerEvents="none">
           {shape.name || 'Praça'}
@@ -1380,7 +1380,7 @@ function EditorShape({ shape, selected }) {
     return (
       <g data-shape-id={shape.id}>
         <ellipse cx={shape.cx} cy={shape.cy} rx={shape.rx} ry={shape.ry}
-          fill="#bcd6e4" stroke={selected ? '#10b981' : '#9bb8c9'} strokeWidth={selected ? 2.5 : 1} />
+          fill="#bcd6e4" stroke={selected ? '#3288e0' : '#9bb8c9'} strokeWidth={selected ? 2.5 : 1} />
         <text x={shape.cx} y={shape.cy + 5} fontSize="14" textAnchor="middle"
           fontFamily="Manrope" fontWeight="600" fontStyle="italic" fill="#3d6680" pointerEvents="none">
           {shape.name || 'Lago'}
@@ -1393,7 +1393,7 @@ function EditorShape({ shape, selected }) {
     return (
       <g data-shape-id={shape.id}>
         <circle cx={shape.x} cy={shape.y + 1} r="9" fill="rgba(0,0,0,0.12)" />
-        <circle cx={shape.x} cy={shape.y} r="9" fill="#7d9a5e" stroke={selected ? '#10b981' : '#6a8650'} strokeWidth={selected ? 2.5 : 0.8} />
+        <circle cx={shape.x} cy={shape.y} r="9" fill="#7d9a5e" stroke={selected ? '#3288e0' : '#6a8650'} strokeWidth={selected ? 2.5 : 0.8} />
       </g>
     );
   }
@@ -1401,7 +1401,7 @@ function EditorShape({ shape, selected }) {
     return (
       <g data-shape-id={shape.id}>
         <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h}
-          fill="#f5f4ee" stroke={selected ? '#10b981' : '#c9ccc0'} strokeWidth={selected ? 2.5 : 1.5} rx="2" />
+          fill="#f5f4ee" stroke={selected ? '#3288e0' : '#c9ccc0'} strokeWidth={selected ? 2.5 : 1.5} rx="2" />
         <text x={shape.x + shape.w/2} y={shape.y + shape.h + 14} fontSize="10" textAnchor="middle"
           fontFamily="Manrope" fontWeight="600" fill="#5a6358" pointerEvents="none">
           {shape.name || 'Portaria'}
@@ -1416,7 +1416,7 @@ function EditorShape({ shape, selected }) {
       <g data-shape-id={shape.id}>
         <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h}
           fill={fill} fillOpacity={selected ? 0.6 : 0.42}
-          stroke={selected ? '#10b981' : '#999'} strokeWidth={selected ? 2.5 : 1.2} />
+          stroke={selected ? '#3288e0' : '#999'} strokeWidth={selected ? 2.5 : 1.2} />
         <text x={shape.x + shape.w/2} y={shape.y + shape.h/2 + 4}
           fontSize="13" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="600" fill="#1a1f24" pointerEvents="none">
           {shape.quadra}{String(shape.numero).padStart(2,'0')}
@@ -1435,13 +1435,13 @@ function EditorShape({ shape, selected }) {
       <g data-shape-id={shape.id}>
         <polygon points={shape.points.map(p => p.join(',')).join(' ')}
           fill={fill} fillOpacity={selected ? 0.6 : 0.42}
-          stroke={selected ? '#10b981' : '#999'} strokeWidth={selected ? 2.5 : 1.2} />
+          stroke={selected ? '#3288e0' : '#999'} strokeWidth={selected ? 2.5 : 1.2} />
         <text x={cx} y={cy + 4} fontSize="13" textAnchor="middle"
           fontFamily="JetBrains Mono" fontWeight="600" fill="#1a1f24" pointerEvents="none">
           {shape.quadra}{String(shape.numero).padStart(2,'0')}
         </text>
         {selected && shape.points.map((p, i) => (
-          <circle key={i} cx={p[0]} cy={p[1]} r="4" fill="#10b981" stroke="#fff" strokeWidth="1.5" />
+          <circle key={i} cx={p[0]} cy={p[1]} r="4" fill="#3288e0" stroke="#fff" strokeWidth="1.5" />
         ))}
       </g>
     );
@@ -1457,9 +1457,9 @@ function SelHandles({ x, y, w, h }) {
   ];
   return (
     <g pointerEvents="none">
-      <rect x={x} y={y} width={w} height={h} fill="none" stroke="#10b981" strokeWidth="1.5" strokeDasharray="4 3" />
+      <rect x={x} y={y} width={w} height={h} fill="none" stroke="#3288e0" strokeWidth="1.5" strokeDasharray="4 3" />
       {handles.map(([hx, hy], i) => (
-        <rect key={i} x={hx - 4} y={hy - 4} width="8" height="8" fill="#fff" stroke="#10b981" strokeWidth="1.5" />
+        <rect key={i} x={hx - 4} y={hy - 4} width="8" height="8" fill="#fff" stroke="#3288e0" strokeWidth="1.5" />
       ))}
     </g>
   );
@@ -1498,18 +1498,18 @@ function RoadDraftPreview({ draft, preview, mousePos, activeSnap }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path d={d} fill="none" stroke="#10b981" strokeWidth="1.6" strokeDasharray="7 5" />
+      <path d={d} fill="none" stroke="#3288e0" strokeWidth="1.6" strokeDasharray="7 5" />
       {controls.map((control) => (
         <g key={control.key}>
-          <line x1={control.from[0]} y1={control.from[1]} x2={control.control[0]} y2={control.control[1]} stroke="#10b981" strokeWidth="1" strokeDasharray="4 4" />
-          <line x1={control.control[0]} y1={control.control[1]} x2={control.to[0]} y2={control.to[1]} stroke="#10b981" strokeWidth="1" strokeDasharray="4 4" />
+          <line x1={control.from[0]} y1={control.from[1]} x2={control.control[0]} y2={control.control[1]} stroke="#3288e0" strokeWidth="1" strokeDasharray="4 4" />
+          <line x1={control.control[0]} y1={control.control[1]} x2={control.to[0]} y2={control.to[1]} stroke="#3288e0" strokeWidth="1" strokeDasharray="4 4" />
           <rect
             x={control.control[0] - 4}
             y={control.control[1] - 4}
             width="8"
             height="8"
             rx="2"
-            fill="#10b981"
+            fill="#3288e0"
             stroke="#fff"
             strokeWidth="1.5"
             transform={`rotate(45 ${control.control[0]} ${control.control[1]})`}
@@ -1522,7 +1522,7 @@ function RoadDraftPreview({ draft, preview, mousePos, activeSnap }) {
           cx={p[0]}
           cy={p[1]}
           r={activeSnap && activeSnap.point[0] === p[0] && activeSnap.point[1] === p[1] ? 8 : 5}
-          fill="#10b981"
+          fill="#3288e0"
           stroke="#fff"
           strokeWidth="1.5"
         />
@@ -1541,19 +1541,19 @@ function DrawingPreview({ drawing }) {
   if (drawing.kind === 'lago') {
     return (
       <ellipse cx={x + w/2} cy={y + h/2} rx={w/2} ry={h/2}
-        fill="rgba(155, 184, 201, 0.5)" stroke="#10b981" strokeWidth="1.5" strokeDasharray="6 4" />
+        fill="rgba(155, 184, 201, 0.5)" stroke="#3288e0" strokeWidth="1.5" strokeDasharray="6 4" />
     );
   }
   return (
     <g>
       <rect x={x} y={y} width={w} height={h}
-        fill={drawing.kind === 'lote' ? 'rgba(16, 185, 129, 0.25)'
+        fill={drawing.kind === 'lote' ? 'rgba(50, 136, 224, 0.25)'
           : drawing.kind === 'rua' ? 'rgba(255,255,255,0.7)'
           : drawing.kind === 'praca' ? 'rgba(197, 212, 177, 0.6)'
-          : 'rgba(16, 185, 129, 0.2)'}
-        stroke="#10b981" strokeWidth="1.5" strokeDasharray="6 4" />
+          : 'rgba(50, 136, 224, 0.2)'}
+        stroke="#3288e0" strokeWidth="1.5" strokeDasharray="6 4" />
       <text x={x + w/2} y={y + h/2 + 4} fontSize="11" textAnchor="middle"
-        fontFamily="JetBrains Mono" fontWeight="600" fill="#10b981" pointerEvents="none">
+        fontFamily="JetBrains Mono" fontWeight="600" fill="#3288e0" pointerEvents="none">
         {Math.round(w/4)}×{Math.round(h/4)} m
       </text>
     </g>
@@ -1617,7 +1617,7 @@ function PropertiesPanel({ shape, onChange, onDelete, tool, shapes, canvasSize, 
         </div>
         <div className="props-legend">
           <div className="props-legend-title">LEGENDA DOS LOTES</div>
-          <div className="props-legend-row"><span style={{ background: '#10b981' }} /> Disponível</div>
+          <div className="props-legend-row"><span style={{ background: '#3288e0' }} /> Disponível</div>
           <div className="props-legend-row"><span style={{ background: '#ef4444' }} /> Vendido</div>
         </div>
       </div>

@@ -1,11 +1,21 @@
 // chrome.jsx - Sidebar + Header
 
-export const Sidebar = ({ view, onNavigate, counts = {} }) => {
+export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout }) => {
+  const roleLabels = {
+    admin: 'Administrador',
+    gerente: 'Gerente',
+    vendedor: 'Vendedor',
+  };
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'home' },
     { id: 'loteamentos', label: 'Loteamentos', icon: 'map', badge: counts.loteamentos },
     { id: 'lotes', label: 'Lotes', icon: 'grid', badge: counts.lotes },
     { id: 'vendas', label: 'Vendas', icon: 'bag', badge: counts.vendas },
+    { id: 'clientes', label: 'Clientes', icon: 'client', badge: counts.clientes },
+    ...(user?.role === 'admin'
+      ? [{ id: 'admin', label: 'Admin', icon: 'shield' }]
+      : []),
   ];
 
   const iconPaths = {
@@ -13,7 +23,17 @@ export const Sidebar = ({ view, onNavigate, counts = {} }) => {
     map: <path d="M2 4l4-1 4 1 4-1v11l-4 1-4-1-4 1V4zM6 3v11M10 4v11" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill="none" />,
     grid: <path d="M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z" stroke="currentColor" strokeWidth="1.3" fill="none" />,
     bag: <path d="M3 6h12l-1 9H4L3 6zM6 6V4a2 2 0 0 1 4 0v2" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" />,
+    client: <path d="M8 8.2a2.9 2.9 0 1 0 0-5.8 2.9 2.9 0 0 0 0 5.8zM3 15v-1.1c0-2.2 2.2-4 5-4s5 1.8 5 4V15" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
+    users: <path d="M6.5 8a2.7 2.7 0 1 0 0-5.4A2.7 2.7 0 0 0 6.5 8zM2.5 15v-1.1c0-2 1.8-3.6 4-3.6s4 1.6 4 3.6V15M12 7.7a2.1 2.1 0 1 0 0-4.2M11.6 10.4c1.8.2 3.1 1.6 3.1 3.3V15" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
+    shield: <path d="M9 2.5l5 1.8v3.8c0 3.2-1.9 5.7-5 7.1-3.1-1.4-5-3.9-5-7.1V4.3l5-1.8zM6.7 8.8l1.4 1.4 3.2-3.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
   };
+
+  const initials = user?.nome
+    ? user.nome.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
+    : user?.email?.[0]?.toUpperCase() ?? '?';
+
+  const displayName = user?.nome || user?.email || 'Usuario';
+  const displayRole = roleLabels[user?.role] || 'Usuario';
 
   return (
     <aside className="sidebar">
@@ -21,7 +41,7 @@ export const Sidebar = ({ view, onNavigate, counts = {} }) => {
         <div className="sb-logo">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
             <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-9z" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.7" fill="#0a0e14" />
+            <circle cx="12" cy="12" r="1.7" fill="#0d1b3e" />
           </svg>
         </div>
         <div className="sb-brand-text">
@@ -46,6 +66,25 @@ export const Sidebar = ({ view, onNavigate, counts = {} }) => {
           />
         ))}
       </nav>
+
+      <div className="sb-foot">
+        <div className="sb-user">
+          <div className="sb-user-avatar">{initials}</div>
+          <div className="sb-user-body">
+            <div className="sb-user-name">{displayName}</div>
+            <div className="sb-user-role">{displayRole}</div>
+          </div>
+        </div>
+        {onLogout && (
+          <button className="sb-logout-btn" onClick={onLogout}>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+              <path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M11 11l3-3-3-3M14 8H6"
+                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Sair do sistema
+          </button>
+        )}
+      </div>
     </aside>
   );
 };
@@ -63,7 +102,16 @@ function NavItem({ item, iconPath, active, onClick }) {
   );
 }
 
-export const Header = ({ view, loteamentoNome, onBack, userEmail, onLogout }) => {
+export const Header = ({ view, loteamentoNome, onBack }) => {
+  const titles = {
+    dashboard: 'Dashboard',
+    vendas: 'Vendas',
+    lotes: 'Lotes',
+    clientes: 'Clientes',
+    usuarios: 'Usuarios',
+    admin: 'Admin',
+  };
+
   return (
     <header className="topbar">
       <div className="tb-left">
@@ -76,7 +124,7 @@ export const Header = ({ view, loteamentoNome, onBack, userEmail, onLogout }) =>
           </button>
         )}
         <div className="tb-crumbs">
-          <span className="tb-crumb">{view === 'dashboard' ? 'Dashboard' : view === 'vendas' ? 'Vendas' : view === 'lotes' ? 'Lotes' : 'Loteamentos'}</span>
+          <span className="tb-crumb">{titles[view] || 'Loteamentos'}</span>
           {view === 'map' && (
             <>
               <span className="tb-crumb-sep">/</span>
@@ -92,34 +140,6 @@ export const Header = ({ view, loteamentoNome, onBack, userEmail, onLogout }) =>
         </svg>
         <input placeholder="Buscar loteamentos e lotes..." />
       </div>
-      {onLogout && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 12 }}>
-          {userEmail && (
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {userEmail}
-            </span>
-          )}
-          <button
-            onClick={onLogout}
-            title="Sair"
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--border, #334155)',
-              borderRadius: 6,
-              color: 'var(--text-muted, #94a3b8)',
-              cursor: 'pointer',
-              padding: '4px 10px',
-              fontSize: '0.75rem',
-              display: 'flex', alignItems: 'center', gap: 5,
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-              <path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M11 11l3-3-3-3M14 8H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Sair
-          </button>
-        </div>
-      )}
     </header>
   );
 };
