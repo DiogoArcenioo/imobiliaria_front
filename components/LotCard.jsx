@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useLayoutEffect } from 'react';
 import { fmtBRL, statusLabel as getStatusLabel } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { STATUS_COLORS } from './MapView';
@@ -21,6 +21,34 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
     ? { left: position.left, top: position.top, transform: position.transform }
     : {};
 
+  const cardRef = useRef(null);
+  const [adjustedStyle, setAdjustedStyle] = useState(cardStyle);
+
+  useLayoutEffect(() => {
+    if (!cardRef.current || !position) {
+      setAdjustedStyle(cardStyle);
+      return;
+    }
+    const rect = cardRef.current.getBoundingClientRect();
+    const margin = 12;
+    let top = parseFloat(position.top);
+    let left = parseFloat(position.left);
+
+    const overflowB = rect.bottom - (window.innerHeight - margin);
+    if (overflowB > 0) top -= overflowB;
+
+    const adjustedRectTop = rect.top - Math.max(0, overflowB);
+    if (adjustedRectTop < margin) top += margin - adjustedRectTop;
+
+    const overflowR = rect.right - (window.innerWidth - margin);
+    if (overflowR > 0) left -= overflowR;
+
+    const adjustedRectLeft = rect.left - Math.max(0, overflowR);
+    if (adjustedRectLeft < margin) left += margin - adjustedRectLeft;
+
+    setAdjustedStyle({ left: `${left}px`, top: `${top}px`, transform: 'none' });
+  }, [position]);
+
   const handleAction = async (nextStatus) => {
     if (!onStatusChange || lot.status === 'vendido') return;
     setActionLoading(true);
@@ -37,7 +65,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
 
   if (variant === 'compacto') {
     return (
-      <div className="lot-card lot-card-compacto" style={cardStyle}>
+      <div ref={cardRef} className="lot-card lot-card-compacto" style={adjustedStyle}>
         <div className="lcc-arrow" style={{ background: status.fill }} />
         <button className="lcc-x" onClick={onClose} aria-label="Fechar">×</button>
         <div className="lcc-head">
@@ -90,7 +118,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
 
   if (variant === 'premium') {
     return (
-      <div className="lot-card lot-card-premium" style={cardStyle}>
+      <div ref={cardRef} className="lot-card lot-card-premium" style={adjustedStyle}>
         <button className="lcp-x" onClick={onClose} aria-label="Fechar">
           <svg width="14" height="14" viewBox="0 0 14 14">
             <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -167,7 +195,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
   }
 
   return (
-    <div className="lot-card lot-card-detalhado" style={cardStyle}>
+    <div ref={cardRef} className="lot-card lot-card-detalhado" style={adjustedStyle}>
       <div className="lcd-arrow" />
       <button className="lcd-x" onClick={onClose} aria-label="Fechar">
         <svg width="12" height="12" viewBox="0 0 14 14">

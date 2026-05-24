@@ -182,6 +182,7 @@ function LoginModal({ onClose }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const mouseDownRef = useRef(false);
 
   useEffect(() => {
     const fn = (e) => { if (e.key === 'Escape') onClose(); };
@@ -209,27 +210,30 @@ function LoginModal({ onClose }) {
     borderRadius:10, color: C.text, fontSize:14,
     outline:'none', boxSizing:'border-box',
     fontFamily:'inherit', transition:'all 0.15s',
+    cursor: 'text',
   });
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position:'fixed', inset:0, zIndex:500,
-        background:'rgba(6,12,26,0.72)',
-        backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)',
-        display:'flex', alignItems:'center', justifyContent:'center',
-        padding:20,
-      }}
-    >
+    <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      {/* camada de blur separada do modal — evita bug do Chrome que esconde o cursor em filhos de backdrop-filter */}
       <div
-        onClick={e => e.stopPropagation()}
+        onMouseDown={() => { mouseDownRef.current = true; }}
+        onClick={() => { if (mouseDownRef.current) onClose(); }}
+        style={{
+          position:'fixed', inset:0,
+          background:'rgba(6,12,26,0.72)',
+          backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)',
+        }}
+      />
+      <div
+        onMouseDown={() => { mouseDownRef.current = false; }}
         style={{
           width:'100%', maxWidth:420,
           background:'#fff', borderRadius:24,
           boxShadow:'0 40px 80px rgba(0,0,0,0.35)',
           padding:'40px 40px 36px',
-          position:'relative',
+          position:'relative', zIndex:1,
+          colorScheme:'light',
           animation:'modalIn 0.25s cubic-bezier(0.16,1,0.3,1)',
         }}
       >
@@ -276,7 +280,7 @@ function LoginModal({ onClose }) {
             <label style={{ display:'block', fontSize:12, fontWeight:700, color: C.muted, marginBottom:5, letterSpacing:'0.02em' }}>
               SENHA
             </label>
-            <FocusInput value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" required autoComplete="current-password" inp={inp}/>
+            <FocusInput value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" required autoComplete="current-password" inp={inp} showToggle/>
           </div>
 
           {error && (
@@ -327,16 +331,50 @@ function LoginModal({ onClose }) {
   );
 }
 
-function FocusInput({ value, onChange, type, placeholder, required, autoComplete, inp }) {
+function FocusInput({ value, onChange, type, placeholder, required, autoComplete, inp, showToggle }) {
   const [focused, setFocused] = useState(false);
-  return (
+  const [visible, setVisible] = useState(false);
+  const inputType = showToggle ? (visible ? 'text' : 'password') : type;
+
+  const input = (
     <input
-      value={value} onChange={onChange} type={type}
+      value={value} onChange={onChange} type={inputType}
       placeholder={placeholder} required={required} autoComplete={autoComplete}
-      style={inp(focused)}
+      style={{ ...inp(focused), ...(showToggle ? { paddingRight: 40 } : {}) }}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
     />
+  );
+
+  if (!showToggle) return input;
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {input}
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setVisible(v => !v)}
+        style={{
+          position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+          color: focused ? C.blue : C.muted,
+          display: 'flex', alignItems: 'center', transition: 'color 0.15s',
+        }}
+      >
+        {visible ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M1 1l22 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/>
+          </svg>
+        )}
+      </button>
+    </div>
   );
 }
 

@@ -11,6 +11,7 @@ import { MapView, STATUS_COLORS } from "./MapView";
 import { ClienteManagement, formatCpfCnpj } from "./ClienteManagement";
 import { SaleDialog } from "./SaleDialog";
 import { AdminPanel } from "./AdminPanel";
+import { UserManagement } from "./UserManagement";
 import {
   TweakColor,
   TweakRadio,
@@ -92,6 +93,7 @@ export default function ImobiliariaApp() {
   // Ouve evento de sessão expirada emitido pelo api.js
   useEffect(() => {
     const handleUnauthorized = () => {
+      localStorage.removeItem('admin_empresa_id');
       logout();
       router.replace("/?login=1");
     };
@@ -116,24 +118,41 @@ export default function ImobiliariaApp() {
     if (user?.role !== 'admin') fetchLoteamentos();
   }, [fetchLoteamentos, user?.role]);
 
-  // Admin: carrega lista de empresas e aguarda seleção antes de carregar dados
+  // Admin: carrega lista de empresas e restaura seleção salva (persiste no F5)
   useEffect(() => {
     if (user?.role !== 'admin') return;
     getEmpresas()
-      .then(setEmpresas)
+      .then((list) => {
+        setEmpresas(list);
+        const savedId = localStorage.getItem('admin_empresa_id');
+        if (savedId) {
+          const saved = list.find((e) => String(e.id) === savedId);
+          if (saved) {
+            setSelectedEmpresa(saved);
+            setAdminEmpresaOverride(saved.id);
+            setLoading(true);
+            fetchLoteamentos();
+          }
+        }
+      })
       .catch((err) => showToast('Erro ao carregar empresas: ' + err.message, 'error'));
-  }, [user?.role]);
+  }, [user?.role, fetchLoteamentos]);
 
   const onSelectEmpresa = useCallback((empresa) => {
     setSelectedEmpresa(empresa);
     setAdminEmpresaOverride(empresa?.id ?? null);
+    if (empresa?.id) {
+      localStorage.setItem('admin_empresa_id', String(empresa.id));
+    } else {
+      localStorage.removeItem('admin_empresa_id');
+    }
     setLoteamentos([]);
     setLoading(true);
     if (empresa?.id) fetchLoteamentos();
   }, [fetchLoteamentos]);
 
   const fetchUsers = useCallback(async () => {
-    if (user?.role !== "admin") {
+    if (user?.role !== "admin" && user?.role !== "gerente") {
       setUsuarios([]);
       return;
     }
@@ -316,9 +335,8 @@ export default function ImobiliariaApp() {
   const canSellLot = canSellByRole(user?.role);
 
   useEffect(() => {
-    if (view === "admin" && user?.role !== "admin") {
-      setView("dashboard");
-    }
+    if (view === "admin" && user?.role !== "admin") setView("dashboard");
+    if (view === "usuarios" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
   }, [view, user?.role]);
 
   const onOpenLoteamento = (id) => {
@@ -539,7 +557,7 @@ export default function ImobiliariaApp() {
           usuarios: usuarios.length,
         }}
         user={user}
-        onLogout={() => { logout(); router.replace('/'); }}
+        onLogout={() => { localStorage.removeItem('admin_empresa_id'); logout(); router.replace('/'); }}
         empresas={empresas}
         selectedEmpresa={selectedEmpresa}
         onSelectEmpresa={onSelectEmpresa}
@@ -630,6 +648,16 @@ export default function ImobiliariaApp() {
               logsLoading={logsLoading}
               onRefreshLogs={fetchCancelamentosLog}
               onCancelarVenda={onCancelarVenda}
+            />
+          )}
+
+          {view === "usuarios" && (user?.role === "gerente" || user?.role === "admin") && (
+            <UserManagement
+              users={usuarios}
+              loading={usersLoading}
+              onRefresh={fetchUsers}
+              onCreate={onCreateUser}
+              currentUser={user}
             />
           )}
 

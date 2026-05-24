@@ -199,7 +199,9 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
               <select value={form.role} onChange={(event) => setField("role", event.target.value)}>
                 <option value="vendedor">Vendedor</option>
                 <option value="gerente">Gerente</option>
-                <option value="admin">Administrador</option>
+                {currentUser?.role === "admin" && (
+                  <option value="admin">Administrador</option>
+                )}
               </select>
             </Field>
           </div>

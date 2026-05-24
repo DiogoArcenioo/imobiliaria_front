@@ -18,6 +18,9 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
     ...(user?.role === 'admin'
       ? [{ id: 'admin', label: 'Admin', icon: 'shield' }]
       : []),
+    ...(user?.role === 'gerente'
+      ? [{ id: 'usuarios', label: 'Usuarios', icon: 'users' }]
+      : []),
   ];
 
   const iconPaths = {

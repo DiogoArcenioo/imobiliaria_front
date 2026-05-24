@@ -1,6 +1,7 @@
 'use client';
 
 import { fmtBRL, statusLabel } from '../lib/data';
+import { AiLoteamentoGenerator } from './AiLoteamentoGenerator';
 // editor.jsx — Loteamento map editor (paint-like tools)
 
 import { useCallback as useCallbackEd, useEffect as useEffectEd, useMemo as useMemoEd, useRef as useRefEd, useState as useStateEd } from 'react';
@@ -189,6 +190,104 @@ function findRoadSnapPoint(connectionPoints, rawX, rawY) {
   return best;
 }
 
+// ── Node editing helpers ───────────────────────────────────────────────────
+
+function getShapeNodes(shape) {
+  if (shape.kind === 'lote') {
+    const { x, y, w, h } = shape;
+    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  }
+  if (shape.kind === 'lote-poly') return shape.points || [];
+  if (shape.kind === 'rua' && shape.roadType === 'path') {
+    return [shape.start, ...(shape.segments || []).map((s) => s.to)].filter(Boolean);
+  }
+  if (shape.kind === 'praca' || shape.kind === 'lago') {
+    if (shape.shape === 'rect') {
+      const { x, y, w, h } = shape;
+      return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+    }
+    if (shape.shape === 'poly') return shape.points || [];
+    if (shape.shape === 'ellipse') return [[shape.cx, shape.cy]];
+  }
+  return [];
+}
+
+function moveNodeInShape(shape, nodeIdx, newX, newY) {
+  const minSize = GRID;
+  if (shape.kind === 'lote') {
+    const { x, y, w, h } = shape;
+    switch (nodeIdx) {
+      case 0: return { ...shape, x: newX, y: newY, w: Math.max(minSize, x + w - newX), h: Math.max(minSize, y + h - newY) };
+      case 1: return { ...shape, w: Math.max(minSize, newX - x), y: newY, h: Math.max(minSize, y + h - newY) };
+      case 2: return { ...shape, w: Math.max(minSize, newX - x), h: Math.max(minSize, newY - y) };
+      case 3: return { ...shape, x: newX, w: Math.max(minSize, x + w - newX), h: Math.max(minSize, newY - y) };
+      default: return shape;
+    }
+  }
+  if (shape.kind === 'lote-poly') {
+    const pts = [...shape.points]; pts[nodeIdx] = [newX, newY]; return { ...shape, points: pts };
+  }
+  if (shape.kind === 'rua' && shape.roadType === 'path') {
+    if (nodeIdx === 0) {
+      const ns = [newX, newY];
+      return { ...shape, start: ns, d: buildRoadPath(ns, shape.segments) };
+    }
+    const segs = [...shape.segments];
+    segs[nodeIdx - 1] = { ...segs[nodeIdx - 1], to: [newX, newY] };
+    return { ...shape, segments: segs, d: buildRoadPath(shape.start, segs) };
+  }
+  if (shape.kind === 'praca' || shape.kind === 'lago') {
+    if (shape.shape === 'rect') {
+      const { x, y, w, h } = shape;
+      switch (nodeIdx) {
+        case 0: return { ...shape, x: newX, y: newY, w: Math.max(minSize, x + w - newX), h: Math.max(minSize, y + h - newY) };
+        case 1: return { ...shape, w: Math.max(minSize, newX - x), y: newY, h: Math.max(minSize, y + h - newY) };
+        case 2: return { ...shape, w: Math.max(minSize, newX - x), h: Math.max(minSize, newY - y) };
+        case 3: return { ...shape, x: newX, w: Math.max(minSize, x + w - newX), h: Math.max(minSize, newY - y) };
+        default: return shape;
+      }
+    }
+    if (shape.shape === 'ellipse' && nodeIdx === 0) return { ...shape, cx: newX, cy: newY };
+    if (shape.shape === 'poly') {
+      const pts = [...shape.points]; pts[nodeIdx] = [newX, newY]; return { ...shape, points: pts };
+    }
+  }
+  return shape;
+}
+
+function getShapeBBox(shape) {
+  if (shape.kind === 'lote') return { x1: shape.x, y1: shape.y, x2: shape.x + shape.w, y2: shape.y + shape.h };
+  if (shape.kind === 'lote-poly') {
+    const xs = shape.points.map(([x]) => x), ys = shape.points.map(([, y]) => y);
+    return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+  }
+  if (shape.kind === 'rua') {
+    if (shape.roadType === 'path') {
+      const pts = [shape.start, ...(shape.segments || []).map((s) => s.to)].filter(Boolean);
+      if (!pts.length) return { x1: 0, y1: 0, x2: 0, y2: 0 };
+      const xs = pts.map(([x]) => x), ys = pts.map(([, y]) => y);
+      return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+    }
+    return { x1: shape.x, y1: shape.y, x2: shape.x + shape.w, y2: shape.y + shape.h };
+  }
+  if (shape.kind === 'praca' || shape.kind === 'lago') {
+    if (shape.shape === 'ellipse') return { x1: shape.cx - shape.rx, y1: shape.cy - shape.ry, x2: shape.cx + shape.rx, y2: shape.cy + shape.ry };
+    if (shape.shape === 'poly') {
+      const xs = shape.points.map(([x]) => x), ys = shape.points.map(([, y]) => y);
+      return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+    }
+    return { x1: shape.x, y1: shape.y, x2: shape.x + shape.w, y2: shape.y + shape.h };
+  }
+  return { x1: (shape.x ?? 0) - 20, y1: (shape.y ?? 0) - 20, x2: (shape.x ?? 0) + 20, y2: (shape.y ?? 0) + 20 };
+}
+
+function shapesInBox(shapes, bx1, by1, bx2, by2) {
+  return shapes.filter((s) => {
+    const b = getShapeBBox(s);
+    return b.x2 >= bx1 && b.x1 <= bx2 && b.y2 >= by1 && b.y1 <= by2;
+  });
+}
+
 // Convert existing loteamento data → editor shapes
 function loteamentoToShapes(lt) {
   const shapes = [];
@@ -368,17 +467,23 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
   const [pan, setPan] = useStateEd({ x: 0, y: 0 });
   const [snap, setSnap] = useStateEd(true);
   const [defaultQuadra, setDefaultQuadra] = useStateEd('A');
+  const [showAiModal, setShowAiModal] = useStateEd(false);
   const [loteamentoMeta, setLoteamentoMeta] = useStateEd({
     nome: initialLoteamento?.nome || 'Novo Loteamento',
     bairro: initialLoteamento?.bairro || '',
     cidade: initialLoteamento?.cidade || '',
     estado: initialLoteamento?.estado || 'GO',
   });
+  const [selectedIds, setSelectedIds] = useStateEd([]);   // multi-select IDs
+  const [boxSelect, setBoxSelect] = useStateEd(null);      // { startX, startY, curX, curY }
+  const [selectedNodeKeys, setSelectedNodeKeys] = useStateEd(new Set()); // "shapeId:nodeIdx"
+
   const svgRef = useRefEd(null);
   const isPanning = useRefEd(false);
   const panStart = useRefEd({ x: 0, y: 0, panX: 0, panY: 0 });
-  const dragShape = useRefEd(null);
+  const dragShape = useRefEd(null); // { ids[], origins[], startX, startY, didPush }
   const roadSegmentDrag = useRefEd(null);
+  const activeNodeDrag = useRefEd(null); // { shapeId, nodeIdx, originShape, startX, startY, didPush }
   const [isDraggingShape, setIsDraggingShape] = useStateEd(false);
 
   const selectedShape = shapes.find((s) => s.id === selectedId);
@@ -547,24 +652,75 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
     }
 
     if (tool === 'select') {
+      // 1. Node handle click?
+      const nodeEl = target.closest('[data-node-key]');
+      if (nodeEl) {
+        const key = nodeEl.dataset.nodeKey;
+        const [shapeId, nodeIdxStr] = key.split(':');
+        const nodeIdx = parseInt(nodeIdxStr, 10);
+        const shape = shapes.find((s) => s.id === shapeId);
+        if (shape) {
+          // Always select the shape the node belongs to
+          setSelectedId(shapeId);
+          if (!selectedIds.includes(shapeId)) setSelectedIds([shapeId]);
+
+          if (e.ctrlKey || e.metaKey) {
+            setSelectedNodeKeys((prev) => {
+              const next = new Set(prev);
+              next.has(key) ? next.delete(key) : next.add(key);
+              return next;
+            });
+          } else {
+            // Start node drag immediately — no pre-selection step needed
+            activeNodeDrag.current = {
+              shapeId, nodeIdx,
+              originShape: shape,
+              startX: rawX, startY: rawY,
+              didPush: false,
+            };
+          }
+        }
+        return;
+      }
+
+      // 2. Shape click?
       const shapeEl = target.closest('[data-shape-id]');
       if (shapeEl) {
         const id = shapeEl.dataset.shapeId;
         const shape = shapes.find((s) => s.id === id);
-        setSelectedId(id);
-        if (shape) {
-          dragShape.current = {
-            id,
-            origin: shape,
-            startX: rawX,
-            startY: rawY,
-            didPush: false,
-          };
+        setSelectedNodeKeys(new Set()); // clear node selection when clicking a shape
+
+        if (e.shiftKey) {
+          // Shift-click: toggle in multi-selection
+          const next = selectedIds.includes(id)
+            ? selectedIds.filter((x) => x !== id)
+            : [...selectedIds, id];
+          setSelectedIds(next);
+          setSelectedId(id);
+        } else {
+          // Regular click: if not already in selection, reset to single
+          if (!selectedIds.includes(id)) {
+            setSelectedIds([id]);
+          }
+          setSelectedId(id);
         }
-      } else {
-        setSelectedId(null);
-        dragShape.current = null;
+
+        // Start dragging selected group
+        if (shape) {
+          const dragIds = selectedIds.includes(id) && !e.shiftKey ? selectedIds : (selectedIds.includes(id) ? selectedIds : [id]);
+          const origins = dragIds.map((did) => shapes.find((s) => s.id === did)).filter(Boolean);
+          dragShape.current = { ids: dragIds, origins, startX: rawX, startY: rawY, didPush: false };
+        }
+        return;
       }
+
+      // 3. Empty space: start box selection
+      setBoxSelect({ startX: rawX, startY: rawY, curX: rawX, curY: rawY });
+      setSelectedId(null);
+      setSelectedIds([]);
+      setSelectedNodeKeys(new Set());
+      dragShape.current = null;
+      activeNodeDrag.current = null;
       return;
     }
 
@@ -664,6 +820,22 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
       setPan({ x: panStart.current.panX + dx, y: panStart.current.panY + dy });
       return;
     }
+    // Node drag
+    if (activeNodeDrag.current) {
+      const drag = activeNodeDrag.current;
+      const nx = snap ? snapV(rawX) : Math.round(rawX);
+      const ny = snap ? snapV(rawY) : Math.round(rawY);
+      if (!drag.didPush) { pushHistory(); drag.didPush = true; }
+      setShapes((current) =>
+        current.map((s) => s.id === drag.shapeId ? moveNodeInShape(drag.originShape, drag.nodeIdx, nx, ny) : s)
+      );
+      return;
+    }
+    // Box selection drag
+    if (boxSelect) {
+      setBoxSelect((prev) => ({ ...prev, curX: rawX, curY: rawY }));
+      return;
+    }
     if (dragShape.current) {
       const drag = dragShape.current;
       const dx = snap ? Math.round((rawX - drag.startX) / GRID) * GRID : Math.round(rawX - drag.startX);
@@ -675,9 +847,14 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
           drag.didPush = true;
           setIsDraggingShape(true);
         }
-        setShapes((current) => (
-          current.map((shape) => (shape.id === drag.id ? moveShapeBy(drag.origin, dx, dy) : shape))
-        ));
+        setShapes((current) =>
+          current.map((shape) => {
+            const idx = drag.ids ? drag.ids.indexOf(shape.id) : (shape.id === drag.id ? 0 : -1);
+            if (idx === -1) return shape;
+            const origin = drag.origins ? drag.origins[idx] : drag.origin;
+            return moveShapeBy(origin, dx, dy);
+          })
+        );
       }
       return;
     }
@@ -699,6 +876,24 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
   const onMouseUp = () => {
     if (isPanning.current) {
       isPanning.current = false;
+    }
+    if (activeNodeDrag.current) {
+      activeNodeDrag.current = null;
+      return;
+    }
+    if (boxSelect) {
+      const bx1 = Math.min(boxSelect.startX, boxSelect.curX);
+      const by1 = Math.min(boxSelect.startY, boxSelect.curY);
+      const bx2 = Math.max(boxSelect.startX, boxSelect.curX);
+      const by2 = Math.max(boxSelect.startY, boxSelect.curY);
+      if (bx2 - bx1 > 5 || by2 - by1 > 5) {
+        const inside = shapesInBox(shapes, bx1, by1, bx2, by2);
+        const ids = inside.map((s) => s.id);
+        setSelectedIds(ids);
+        if (ids.length) setSelectedId(ids[ids.length - 1]);
+      }
+      setBoxSelect(null);
+      return;
     }
     if (dragShape.current) {
       dragShape.current = null;
@@ -852,12 +1047,25 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
         setPolyPoints([]);
         setLagoPolyPoints([]);
         setPracaPolyPoints([]);
+        setBoxSelect(null);
+        setSelectedNodeKeys(new Set());
+        activeNodeDrag.current = null;
         setSelectedId(null);
+        setSelectedIds([]);
       }
       else if (e.key === 'Enter') {
         if (finishActiveDraft()) e.preventDefault();
       }
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) deleteShape(selectedId);
+      else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedIds.length > 1) {
+          pushHistory();
+          setShapes((s) => s.filter((sh) => !selectedIds.includes(sh.id)));
+          setSelectedIds([]);
+          setSelectedId(null);
+        } else if (selectedId) {
+          deleteShape(selectedId);
+        }
+      }
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); handleUndo(); }
       else {
         const t = TOOL_LIST.find((t) => t.shortcut === e.key.toUpperCase());
@@ -888,6 +1096,19 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
     setRoadPreview(null);
     setRoadSnapTarget(null);
     roadSegmentDrag.current = null;
+    setBoxSelect(null);
+    setSelectedNodeKeys(new Set());
+    activeNodeDrag.current = null;
+  };
+
+  const handleAiGenerate = (generatedShapes) => {
+    const withIds = generatedShapes.map((shape, idx) => ({
+      ...shape,
+      id: `ai-${Date.now()}-${idx}`,
+    }));
+    setHistory((h) => [...h, shapes]);
+    setShapes(withIds);
+    setSelectedId(null);
   };
 
   // ── render ─────────────────────────────────────────────────────────────
@@ -932,6 +1153,16 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
           </div>
         </div>
         <div className="ed-top-right">
+          <button
+            className="ed-tbtn ed-tbtn-ai"
+            onClick={() => setShowAiModal(true)}
+            title="Gerar loteamento com IA"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Gerar com IA
+          </button>
           <button className="ed-tbtn" onClick={handleUndo} disabled={!history.length && !roadDraft} title="Desfazer (Ctrl+Z)">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 8H3l3-3 3 3H7a4 4 0 0 1 4 4 4 4 0 0 1-4 4H5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"/></svg>
             Desfazer
@@ -1065,7 +1296,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
           onMouseMove={onMouseMoveSvg}
           onMouseUp={onMouseUp}
           onMouseLeave={() => {
-            if (isPanning.current || dragShape.current || roadSegmentDrag.current) onMouseUp();
+            if (isPanning.current || dragShape.current || roadSegmentDrag.current || activeNodeDrag.current || boxSelect) onMouseUp();
             setRoadSnapTarget(null);
           }}
           onDoubleClick={() => finishActiveDraft()}
@@ -1127,14 +1358,14 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
             <rect width={canvasSize.width} height={canvasSize.height} fill="url(#ed-grid)" />
             <rect width={canvasSize.width} height={canvasSize.height} fill="url(#ed-grid-big)" />
 
-            <RoadSurfaceLayer shapes={shapes} selectedId={selectedId} />
+            <RoadSurfaceLayer shapes={shapes} selectedId={selectedId} selectedIds={selectedIds} />
 
             {/* Shapes */}
             {shapes.filter((s) => s.kind !== 'rua').map((s) => (
               <EditorShape
                 key={s.id}
                 shape={s}
-                selected={selectedId === s.id}
+                selected={selectedId === s.id || selectedIds.includes(s.id)}
               />
             ))}
 
@@ -1220,6 +1451,45 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
                 <line x1="0" y1={mousePos[1]} x2={canvasSize.width} y2={mousePos[1]} stroke="rgba(0,0,0,0.15)" strokeWidth="0.5" strokeDasharray="3 3" />
               </g>
             )}
+
+            {/* Node handles — always visible in select mode for all shapes */}
+            {tool === 'select' && (
+              <g className="ed-node-layer" style={{ pointerEvents: 'all' }}>
+                {shapes.map((shape) => {
+                  const active = shape.id === selectedId || selectedIds.includes(shape.id);
+                  return getShapeNodes(shape).map(([nx, ny], idx) => {
+                    const key = `${shape.id}:${idx}`;
+                    const isNodeSel = selectedNodeKeys.has(key);
+                    return (
+                      <circle
+                        key={key}
+                        data-node-key={key}
+                        cx={nx}
+                        cy={ny}
+                        r={active ? 5 : 4}
+                        className={
+                          'ed-node' +
+                          (active ? ' ed-node-active' : ' ed-node-dim') +
+                          (isNodeSel ? ' ed-node-selected' : '')
+                        }
+                      />
+                    );
+                  });
+                })}
+              </g>
+            )}
+
+            {/* Box selection rectangle */}
+            {boxSelect && (
+              <rect
+                x={Math.min(boxSelect.startX, boxSelect.curX)}
+                y={Math.min(boxSelect.startY, boxSelect.curY)}
+                width={Math.abs(boxSelect.curX - boxSelect.startX)}
+                height={Math.abs(boxSelect.curY - boxSelect.startY)}
+                className="ed-box-select"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
           </svg>
 
           {/* Bottom statusbar */}
@@ -1286,6 +1556,13 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
           />
         </aside>
       </div>
+
+      {showAiModal && (
+        <AiLoteamentoGenerator
+          onGenerate={handleAiGenerate}
+          onClose={() => setShowAiModal(false)}
+        />
+      )}
     </div>
   );
 };
