@@ -63,9 +63,9 @@ export const MAP_THEMES = {
 };
 
 export const STATUS_COLORS = {
-  disponivel: { fill: '#3288e0', stroke: '#1a5fa8', label: '#1a5fa8', glow: 'rgba(50, 136, 224, .35)' },
-  reservado: { fill: '#f59e0b', stroke: '#d97706', label: '#b45309', glow: 'rgba(245, 158, 11, .35)' },
-  vendido: { fill: '#ef4444', stroke: '#dc2626', label: '#b91c1c', glow: 'rgba(239, 68, 68, .3)' },
+  disponivel: { fill: '#b0b8c1', stroke: '#7a8490', label: '#555e66', glow: 'rgba(150,160,170,.4)' },
+  reservado:  { fill: '#ffbb00', stroke: '#d49500', label: '#a06e00', glow: 'rgba(255,187,0,.45)'  },
+  vendido:    { fill: '#e84040', stroke: '#be1a1a', label: '#961010', glow: 'rgba(220,40,40,.4)'   },
 };
 
 export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLotId, density }) {
@@ -340,7 +340,7 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
 
           {/* Lots */}
           {loteamento.lots.map((lot) => {
-            const s = STATUS_COLORS[lot.status];
+            const s = STATUS_COLORS[lot.status] || STATUS_COLORS.disponivel;
             const isSel = selectedLotId === lot.id;
             return (
               <g key={lot.id} className="lot-group">
@@ -348,7 +348,7 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
                   className="lot-poly"
                   points={lot.polygon}
                   fill={s.fill}
-                  fillOpacity={isSel ? 0.65 : 0.42}
+                  fillOpacity={isSel ? 0.82 : 0.62}
                   stroke={isSel ? s.stroke : T.lotStroke}
                   strokeWidth={isSel ? 3 : 1.2}
                   onClick={(e) => { e.stopPropagation(); onLotClick(lot); }}
@@ -528,7 +528,7 @@ function MapLegend({ counts, theme }) {
     <div className="map-legend">
       <div className="legend-title">LEGENDA</div>
       <div className="legend-row">
-        <span className="legend-dot" style={{ background: STATUS_COLORS.disponivel.fill, boxShadow: `0 0 0 3px ${STATUS_COLORS.disponivel.glow}` }} />
+        <span className="legend-dot" style={{ background: STATUS_COLORS.disponivel.fill, opacity: 0.85, boxShadow: `0 0 0 3px ${STATUS_COLORS.disponivel.glow}` }} />
         <span className="legend-lbl">Disponível</span>
         <span className="legend-num">{counts.disponivel}</span>
       </div>

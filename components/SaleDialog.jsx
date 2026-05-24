@@ -23,6 +23,7 @@ export function SaleDialog({
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(initialClient || null);
+  const [observacao, setObservacao] = useState("");
   const [saving, setSaving] = useState(false);
   const isReserva = actionStatus === "reservado";
   const actionLabel = isReserva ? "reserva" : "venda";
@@ -54,7 +55,7 @@ export function SaleDialog({
     if (!selected) return;
     setSaving(true);
     try {
-      await onConfirm(selected);
+      await onConfirm(selected, isReserva ? observacao : undefined);
     } finally {
       setSaving(false);
     }
@@ -124,6 +125,21 @@ export function SaleDialog({
           <div className="sale-selected-client">
             {isReserva ? "Reserva" : "Venda"} vinculada ao cliente <b>ID {selected.id}</b> - {selected.nome}
           </div>
+        )}
+
+        {isReserva && (
+          <label className="sale-observacao-label">
+            <span>Observação da negociação <small>(visível apenas para você, gerente e admin)</small></span>
+            <textarea
+              className="sale-observacao-textarea"
+              value={observacao}
+              onChange={(e) => setObservacao(e.target.value)}
+              placeholder="Ex: cliente aguarda aprovação de financiamento, retorno em 30 dias..."
+              rows={3}
+              maxLength={2000}
+            />
+            <span className="sale-observacao-count">{observacao.length}/2000</span>
+          </label>
         )}
 
         <footer className="sale-modal-actions">

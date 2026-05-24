@@ -1613,9 +1613,9 @@ function RoadNetworkOverlay({ graph, selectedId, activeSnap }) {
 // Render a single shape in the editor
 function EditorShape({ shape, selected }) {
   const STATUS_FILL = {
-    disponivel: '#3288e0',
-    reservado: '#f59e0b',
-    vendido: '#ef4444',
+    disponivel: '#b0b8c1',
+    reservado:  '#ffbb00',
+    vendido:    '#e84040',
   };
 
   if (shape.kind === 'rua') {
@@ -1826,7 +1826,7 @@ function EditorShape({ shape, selected }) {
     return (
       <g data-shape-id={shape.id}>
         <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h}
-          fill={fill} fillOpacity={selected ? 0.6 : 0.42}
+          fill={fill} fillOpacity={selected ? 0.82 : 0.62}
           stroke={selected ? '#3288e0' : '#999'} strokeWidth={selected ? 2.5 : 1.2} />
         <text x={shape.x + shape.w/2} y={shape.y + shape.h/2 + 4}
           fontSize="13" textAnchor="middle" fontFamily="JetBrains Mono" fontWeight="600" fill="#1a1f24" pointerEvents="none">
@@ -1842,10 +1842,11 @@ function EditorShape({ shape, selected }) {
     const ys = shape.points.map(p => p[1]);
     const cx = xs.reduce((a,b)=>a+b,0)/xs.length;
     const cy = ys.reduce((a,b)=>a+b,0)/ys.length;
+    const pointsStr = shape.points.map(p => p.join(',')).join(' ');
     return (
       <g data-shape-id={shape.id}>
-        <polygon points={shape.points.map(p => p.join(',')).join(' ')}
-          fill={fill} fillOpacity={selected ? 0.6 : 0.42}
+        <polygon points={pointsStr}
+          fill={fill} fillOpacity={selected ? 0.82 : 0.62}
           stroke={selected ? '#3288e0' : '#999'} strokeWidth={selected ? 2.5 : 1.2} />
         <text x={cx} y={cy + 4} fontSize="13" textAnchor="middle"
           fontFamily="JetBrains Mono" fontWeight="600" fill="#1a1f24" pointerEvents="none">
@@ -2040,7 +2041,7 @@ function PropertiesPanel({ shape, onChange, onDelete, tool, shapes, canvasSize, 
         </div>
         <div className="props-legend">
           <div className="props-legend-title">LEGENDA DOS LOTES</div>
-          <div className="props-legend-row"><span style={{ background: '#3288e0' }} /> Disponível</div>
+          <div className="props-legend-row"><span style={{ background: '#b0b8c1' }} /> Disponível</div>
           <div className="props-legend-row"><span style={{ background: '#ef4444' }} /> Vendido</div>
         </div>
       </div>

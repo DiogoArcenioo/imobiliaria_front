@@ -1,6 +1,8 @@
 // chrome.jsx - Sidebar + Header
 
-export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout }) => {
+import { useState, useEffect, useRef } from 'react';
+
+export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresas = [], selectedEmpresa, onSelectEmpresa }) => {
   const roleLabels = {
     admin: 'Administrador',
     gerente: 'Gerente',
@@ -50,6 +52,17 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout }) => {
         </div>
       </div>
 
+      {user?.role === 'admin' && (
+        <div className="sb-empresa-picker">
+          <div className="sb-nav-section">EMPRESA ATIVA</div>
+          <EmpresaDropdown
+            empresas={empresas}
+            selected={selectedEmpresa}
+            onSelect={onSelectEmpresa}
+          />
+        </div>
+      )}
+
       <nav className="sb-nav">
         <div className="sb-nav-section">GESTÃO</div>
         {navItems.map((item) => (
@@ -88,6 +101,64 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout }) => {
     </aside>
   );
 };
+
+function EmpresaDropdown({ empresas, selected, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
+  return (
+    <div className="emp-dd" ref={ref}>
+      <button
+        className={'emp-dd-trigger' + (open ? ' emp-dd-trigger-open' : '')}
+        onClick={() => setOpen((v) => !v)}
+        type="button"
+      >
+        <span className="emp-dd-label">
+          {selected ? selected.nome : '— Selecione uma empresa —'}
+        </span>
+        <svg className={'emp-dd-chevron' + (open ? ' emp-dd-chevron-up' : '')} width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="emp-dd-list">
+          {empresas.length === 0 ? (
+            <div className="emp-dd-empty">Nenhuma empresa cadastrada</div>
+          ) : (
+            empresas.map((emp) => (
+              <button
+                key={emp.id}
+                className={'emp-dd-item' + (selected?.id === emp.id ? ' emp-dd-item-active' : '')}
+                onClick={() => { onSelect?.(emp); setOpen(false); }}
+                type="button"
+              >
+                <span className="emp-dd-item-nome">{emp.nome}</span>
+                {emp.cidade && (
+                  <span className="emp-dd-item-loc">{[emp.cidade, emp.estado].filter(Boolean).join(' / ')}</span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function NavItem({ item, iconPath, active, onClick }) {
   return (

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Header, Sidebar } from "./Chrome";
 import { Dashboard } from "./Dashboard";
 import { LotCard } from "./LotCard";
+import { NegociacaoDrawer } from "./NegociacaoDrawer";
 import { MapEditor } from "./MapEditor";
 import { MapView, STATUS_COLORS } from "./MapView";
 import { ClienteManagement, formatCpfCnpj } from "./ClienteManagement";
@@ -28,12 +29,14 @@ import {
   flattenLots,
   getCancelamentosLog,
   getClientes,
+  getEmpresas,
   getMotivosCancelamento,
   getTiposCancelamento,
   getUsers,
   getLoteamentos,
   getLoteamento,
   saveEditor,
+  setAdminEmpresaOverride,
   updateMotivoCancelamento,
   updateLoteStatus,
 } from "../lib/api";
@@ -49,7 +52,7 @@ const TWEAK_DEFAULTS = {
 };
 
 const canCreateLoteamentoByRole = (role) => role === "admin";
-const canEditLoteamentoByRole = (role) => role === "admin" || role === "gerente";
+const canEditLoteamentoByRole = (role) => role === "admin";
 const canSellByRole = (role) => ["admin", "gerente", "vendedor"].includes(role);
 
 export default function ImobiliariaApp() {
@@ -78,6 +81,11 @@ export default function ImobiliariaApp() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [saleDraft, setSaleDraft] = useState(null);
   const [clienteReturnSale, setClienteReturnSale] = useState(null);
+  const [drawerLot, setDrawerLot] = useState(null);
+
+  // Estados para seleção de empresa pelo admin
+  const [empresas, setEmpresas] = useState([]);
+  const [selectedEmpresa, setSelectedEmpresa] = useState(null);
 
   const mapContainerRef = useRef(null);
 
@@ -105,7 +113,23 @@ export default function ImobiliariaApp() {
   }, []);
 
   useEffect(() => {
-    fetchLoteamentos();
+    if (user?.role !== 'admin') fetchLoteamentos();
+  }, [fetchLoteamentos, user?.role]);
+
+  // Admin: carrega lista de empresas e aguarda seleção antes de carregar dados
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    getEmpresas()
+      .then(setEmpresas)
+      .catch((err) => showToast('Erro ao carregar empresas: ' + err.message, 'error'));
+  }, [user?.role]);
+
+  const onSelectEmpresa = useCallback((empresa) => {
+    setSelectedEmpresa(empresa);
+    setAdminEmpresaOverride(empresa?.id ?? null);
+    setLoteamentos([]);
+    setLoading(true);
+    if (empresa?.id) fetchLoteamentos();
   }, [fetchLoteamentos]);
 
   const fetchUsers = useCallback(async () => {
@@ -373,6 +397,11 @@ export default function ImobiliariaApp() {
       return;
     }
 
+    if (user?.role === "admin" && !selectedEmpresa && id !== "dashboard") {
+      showToast("Selecione uma empresa antes de navegar", "error");
+      return;
+    }
+
     if (id === "dashboard" || id === "loteamentos") {
       setView(id);
       setSelectedLot(null);
@@ -394,11 +423,11 @@ export default function ImobiliariaApp() {
     fetchClientes("");
   };
 
-  const confirmLotStatus = async (cliente) => {
+  const confirmLotStatus = async (cliente, observacao) => {
     if (!saleDraft?.lot?.db_id || !cliente?.id) return;
     try {
       const { lot, loteamentoId, targetStatus = "vendido" } = saleDraft;
-      await updateLoteStatus(lot.db_id, targetStatus, cliente.id);
+      await updateLoteStatus(lot.db_id, targetStatus, cliente.id, observacao);
       const updated = await refreshLoteamento(loteamentoId);
       if (updated && selectedLot && loteamentoId === activeLoteamentoId) {
         const updatedLot = (updated.lots || []).find((l) => l.db_id === lot.db_id);
@@ -414,6 +443,26 @@ export default function ImobiliariaApp() {
       showToast("Erro: " + err.message, "error");
     }
   };
+
+  const onUltimaEtapaChange = useCallback((loteDbId, loteamentoId, ultimaEtapa) => {
+    setLoteamentos((prev) =>
+      prev.map((l) => {
+        if (l.id !== loteamentoId) return l;
+        return {
+          ...l,
+          lots: (l.lots || []).map((lot) =>
+            lot.db_id === loteDbId ? { ...lot, ultima_etapa: ultimaEtapa } : lot
+          ),
+        };
+      })
+    );
+    setSelectedLot((prev) =>
+      prev?.lot?.db_id === loteDbId ? { ...prev, lot: { ...prev.lot, ultima_etapa: ultimaEtapa } } : prev
+    );
+    setDrawerLot((prev) =>
+      prev?.db_id === loteDbId ? { ...prev, ultima_etapa: ultimaEtapa } : prev
+    );
+  }, []);
 
   const goToClienteCadastroFromSale = () => {
     setClienteReturnSale(saleDraft);
@@ -491,6 +540,9 @@ export default function ImobiliariaApp() {
         }}
         user={user}
         onLogout={() => { logout(); router.replace('/'); }}
+        empresas={empresas}
+        selectedEmpresa={selectedEmpresa}
+        onSelectEmpresa={onSelectEmpresa}
       />
       <main className="main">
         {view !== "editor" && (
@@ -510,6 +562,10 @@ export default function ImobiliariaApp() {
               onRefresh={fetchLoteamentos}
               canCreateLoteamento={canCreateLoteamento}
               canEditLoteamento={canEditLoteamento}
+              user={user}
+              empresas={empresas}
+              selectedEmpresa={selectedEmpresa}
+              onSelectEmpresa={onSelectEmpresa}
             />
           )}
 
@@ -529,6 +585,7 @@ export default function ImobiliariaApp() {
               loteamentos={loteamentos}
               loading={loading}
               onOpenLoteamento={onOpenLoteamento}
+              user={user}
             />
           )}
 
@@ -592,15 +649,19 @@ export default function ImobiliariaApp() {
                   position={selectedLot.position}
                   onClose={() => setSelectedLot(null)}
                   onStatusChange={(status) => openSaleDialog(selectedLot.lot, activeLoteamentoId, status)}
+                  onOpenDrawer={(lot) => setDrawerLot(lot)}
+                  user={user}
                 />
               )}
-              <LoteamentoSwitcher
-                loteamentos={loteamentos}
-                current={loteamento}
-                onSwitch={(id) => onOpenLoteamento(id)}
-                onEdit={() => onOpenEditor(loteamento)}
-                canEditLoteamento={canEditLoteamento}
-              />
+              {!drawerLot && (
+                <LoteamentoSwitcher
+                  loteamentos={loteamentos}
+                  current={loteamento}
+                  onSwitch={(id) => onOpenLoteamento(id)}
+                  onEdit={() => onOpenEditor(loteamento)}
+                  canEditLoteamento={canEditLoteamento}
+                />
+              )}
             </div>
           )}
 
@@ -625,6 +686,15 @@ export default function ImobiliariaApp() {
             view !== "editor" && <EmptyState view={view} />}
         </div>
       </main>
+
+      {drawerLot && (
+        <NegociacaoDrawer
+          lot={drawerLot}
+          user={user}
+          onClose={() => setDrawerLot(null)}
+          onUltimaEtapaChange={onUltimaEtapaChange}
+        />
+      )}
 
       {saleDraft && (
         <SaleDialog
@@ -744,9 +814,14 @@ function LotsView({ loteamentos, loading, onOpenLoteamento, onStatusAction, onOp
   );
 }
 
-function SalesView({ loteamentos, loading, onOpenLoteamento }) {
+function SalesView({ loteamentos, loading, onOpenLoteamento, user }) {
   const lots = flattenLots(loteamentos);
-  const soldLots = lots.filter((lot) => lot.status === "vendido");
+  const isVendedor = user?.role === "vendedor";
+  const soldLots = lots.filter(
+    (lot) =>
+      lot.status === "vendido" &&
+      (!isVendedor || lot.cliente_vinculado_por === user?.id)
+  );
   const total = soldLots.reduce((sum, lot) => sum + (Number(lot.preco) || 0), 0);
 
   return (
@@ -754,8 +829,8 @@ function SalesView({ loteamentos, loading, onOpenLoteamento }) {
       <header className="list-page-head">
         <div>
           <div className="dash-eyebrow">VENDAS</div>
-          <h1 className="list-page-title">Lotes vendidos</h1>
-          <p className="dash-sub">{soldLots.length} vendas registradas · {fmtBRLShort(total)} em VGV realizado.</p>
+          <h1 className="list-page-title">{isVendedor ? "Minhas vendas" : "Lotes vendidos"}</h1>
+          <p className="dash-sub">{soldLots.length} vendas{isVendedor ? " realizadas por você" : " registradas"} · {fmtBRLShort(total)} em VGV realizado.</p>
         </div>
       </header>
 

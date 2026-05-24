@@ -5,7 +5,7 @@ import { fmtBRL, statusLabel as getStatusLabel } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { STATUS_COLORS } from './MapView';
 
-export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange }) => {
+export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange, onOpenDrawer, user }) => {
   if (!lot) return null;
   const status = STATUS_COLORS[lot.status] || STATUS_COLORS.disponivel;
   const statusLabel = getStatusLabel(lot.status);
@@ -65,7 +65,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
             <div className="lcc-cell-v">{lot.fundo || '—'} {lot.fundo ? 'm' : ''}</div>
           </div>
         </div>
-        <ClientLinkInfo lot={lot} compact />
+        <ClientLinkInfo lot={lot} user={user} compact onOpenDrawer={onOpenDrawer} />
         <div className="lcc-actions">
           {canReserve && (
             <button
@@ -142,7 +142,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
               </div>
             )}
           </div>
-          <ClientLinkInfo lot={lot} />
+          <ClientLinkInfo lot={lot} user={user} onOpenDrawer={onOpenDrawer} />
           <div className="lcp-actions">
             {canReserve && (
               <button
@@ -217,7 +217,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
         </div>
       )}
 
-      <ClientLinkInfo lot={lot} />
+      <ClientLinkInfo lot={lot} user={user} onOpenDrawer={onOpenDrawer} />
 
       <div className="lcd-actions">
         {canReserve && (
@@ -241,11 +241,16 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
   );
 };
 
-function ClientLinkInfo({ lot, compact = false }) {
+function ClientLinkInfo({ lot, user: currentUser, compact = false, onOpenDrawer }) {
   if (!['vendido', 'reservado'].includes(lot.status)) return null;
 
-  const user = lot.cliente_vinculado_por_usuario;
-  const userName = user?.nome || user?.login || user?.email || (lot.cliente_vinculado_por ? `Usuario ${lot.cliente_vinculado_por}` : 'Nao informado');
+  const vendedor = lot.cliente_vinculado_por_usuario;
+  const userName = vendedor?.nome || vendedor?.login || vendedor?.email || (lot.cliente_vinculado_por ? `Usuario ${lot.cliente_vinculado_por}` : 'Nao informado');
+
+  const canSeeNegociacao = currentUser && (
+    currentUser.role === 'admin' || currentUser.role === 'gerente' ||
+    currentUser.id === lot.cliente_vinculado_por
+  );
 
   return (
     <div className={compact ? 'lot-client-info lot-client-info-compact' : 'lot-client-info'}>
@@ -262,8 +267,26 @@ function ClientLinkInfo({ lot, compact = false }) {
       <div>
         <span>Vinculado por</span>
         <b>{userName}</b>
-        {user?.email && <small>{user.email}</small>}
+        {vendedor?.email && <small>{vendedor.email}</small>}
       </div>
+      {canSeeNegociacao && (
+        <div className="lot-neg-preview">
+          <div className="lot-neg-preview-head">
+            <span>Negociação</span>
+            <button className="lot-neg-ver-mais" onClick={() => onOpenDrawer?.(lot)}>
+              Ver histórico
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+          {lot.ultima_etapa ? (
+            <p className="lot-neg-preview-text">{lot.ultima_etapa.descricao}</p>
+          ) : (
+            <p className="lot-neg-preview-empty">Sem etapas. Clique em "Ver histórico" para adicionar.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

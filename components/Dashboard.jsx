@@ -12,19 +12,72 @@ export const Dashboard = ({
   onRefresh,
   canCreateLoteamento = false,
   canEditLoteamento = false,
+  user = null,
+  empresas = [],
+  selectedEmpresa = null,
+  onSelectEmpresa,
 }) => {
   const metrics = computeMetrics(loteamentos);
   const lots = flattenLots(loteamentos);
-  const soldLots = lots.filter((lot) => lot.status === 'vendido');
+  const allSoldLots = lots.filter((lot) => lot.status === 'vendido');
+
+  const isVendedor = user?.role === 'vendedor';
+  const soldLots = isVendedor
+    ? allSoldLots.filter((lot) => lot.cliente_vinculado_por === user?.id)
+    : allSoldLots;
+  const myVen = soldLots.length;
+  const myVgvVendido = soldLots.reduce((sum, lot) => sum + (Number(lot.preco) || 0), 0);
+  const displayMetrics = isVendedor ? { ...metrics, ven: myVen, vgvVendido: myVgvVendido } : metrics;
+
+  // Admin sem empresa selecionada: tela de seleção
+  if (user?.role === 'admin' && !selectedEmpresa) {
+    return (
+      <div className="dash">
+        <header className="dash-header">
+          <div>
+            <div className="dash-eyebrow">ADMINISTRADOR DO SISTEMA</div>
+            <h1 className="dash-title">Selecione uma empresa para continuar.</h1>
+            <p className="dash-sub">
+              Você está logado como administrador do sistema. Escolha uma empresa na barra lateral ou abaixo para acessar os dados.
+            </p>
+          </div>
+        </header>
+
+        {empresas.length === 0 ? (
+          <div className="lot-cards-empty">
+            <p>Nenhuma empresa cadastrada no sistema.</p>
+          </div>
+        ) : (
+          <div className="admin-empresa-grid">
+            {empresas.map((emp) => (
+              <button
+                key={emp.id}
+                className="admin-empresa-card"
+                onClick={() => onSelectEmpresa?.(emp)}
+              >
+                <div className="aec-nome">{emp.nome}</div>
+                <div className="aec-meta">
+                  {[emp.cidade, emp.estado].filter(Boolean).join(' / ') || 'Local não informado'}
+                </div>
+                {emp.cnpj && <div className="aec-cnpj">{emp.cnpj}</div>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="dash">
       <header className="dash-header">
         <div>
           <div className="dash-eyebrow">
-            PAINEL · {new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            {user?.role === 'admin' && selectedEmpresa
+              ? `EMPRESA: ${selectedEmpresa.nome}`
+              : `PAINEL · ${new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}`}
           </div>
-          <h1 className="dash-title">Cadastro e vendas de loteamentos.</h1>
+          <h1 className="dash-title">{isVendedor ? 'Minhas vendas e desempenho.' : 'Cadastro e vendas de loteamentos.'}</h1>
           <p className="dash-sub">
             {loading
               ? 'Carregando loteamentos...'
@@ -32,7 +85,9 @@ export const Dashboard = ({
               ? canCreateLoteamento
                 ? 'Nenhum loteamento cadastrado. Crie o primeiro para começar.'
                 : 'Nenhum loteamento cadastrado para esta empresa.'
-              : <>Você tem <b>{metrics.total} lotes cadastrados</b> e {metrics.ven} lotes vendidos.</>}
+              : isVendedor
+            ? <>Você vendeu <b>{displayMetrics.ven} lotes</b> — {fmtBRLShort(displayMetrics.vgvVendido)} em VGV realizado.</>
+            : <>Você tem <b>{metrics.total} lotes cadastrados</b> e {metrics.ven} lotes vendidos.</>}
           </p>
         </div>
         {canCreateLoteamento && (
@@ -46,34 +101,69 @@ export const Dashboard = ({
       </header>
 
       <section className="metric-grid">
-        <MetricCard
-          label="VGV cadastrado"
-          value={fmtBRLShort(metrics.vgvTotal)}
-          delta={loteamentos.length > 0 ? `${loteamentos.length} loteamentos` : '—'}
-          sub={`${metrics.total} lotes cadastrados`}
-          big
-        />
-        <MetricCard
-          label="Loteamentos"
-          value={loteamentos.length}
-          delta={metrics.total > 0 ? `${metrics.total} lotes` : '—'}
-          sub="empreendimentos no cadastro"
-          color="blue"
-        />
-        <MetricCard
-          label="Disponíveis"
-          value={metrics.disp}
-          delta={metrics.total > 0 ? `${Math.round((metrics.disp / metrics.total) * 100)}%` : '—'}
-          sub="lotes em estoque"
-          color="emerald"
-        />
-        <MetricCard
-          label="Vendidos"
-          value={metrics.ven}
-          delta={metrics.ven > 0 ? fmtBRLShort(metrics.vgvVendido) : '—'}
-          sub="VGV realizado"
-          color="red"
-        />
+        {isVendedor ? (
+          <>
+            <MetricCard
+              label="Minhas vendas"
+              value={displayMetrics.ven}
+              delta={displayMetrics.ven > 0 ? fmtBRLShort(displayMetrics.vgvVendido) : '—'}
+              sub="VGV realizado por você"
+              big
+            />
+            <MetricCard
+              label="Loteamentos"
+              value={loteamentos.length}
+              delta={metrics.total > 0 ? `${metrics.total} lotes` : '—'}
+              sub="empreendimentos no cadastro"
+              color="blue"
+            />
+            <MetricCard
+              label="Disponíveis"
+              value={metrics.disp}
+              delta={metrics.total > 0 ? `${Math.round((metrics.disp / metrics.total) * 100)}%` : '—'}
+              sub="lotes em estoque"
+              color="emerald"
+            />
+            <MetricCard
+              label="Meu VGV"
+              value={fmtBRLShort(displayMetrics.vgvVendido)}
+              delta={displayMetrics.ven > 0 ? `${displayMetrics.ven} lotes` : '—'}
+              sub="total vendido por você"
+              color="red"
+            />
+          </>
+        ) : (
+          <>
+            <MetricCard
+              label="VGV cadastrado"
+              value={fmtBRLShort(metrics.vgvTotal)}
+              delta={loteamentos.length > 0 ? `${loteamentos.length} loteamentos` : '—'}
+              sub={`${metrics.total} lotes cadastrados`}
+              big
+            />
+            <MetricCard
+              label="Loteamentos"
+              value={loteamentos.length}
+              delta={metrics.total > 0 ? `${metrics.total} lotes` : '—'}
+              sub="empreendimentos no cadastro"
+              color="blue"
+            />
+            <MetricCard
+              label="Disponíveis"
+              value={metrics.disp}
+              delta={metrics.total > 0 ? `${Math.round((metrics.disp / metrics.total) * 100)}%` : '—'}
+              sub="lotes em estoque"
+              color="emerald"
+            />
+            <MetricCard
+              label="Vendidos"
+              value={metrics.ven}
+              delta={metrics.ven > 0 ? fmtBRLShort(metrics.vgvVendido) : '—'}
+              sub="VGV realizado"
+              color="red"
+            />
+          </>
+        )}
       </section>
 
       <div className="dash-split">
@@ -119,7 +209,7 @@ export const Dashboard = ({
         </section>
 
         <aside className="dash-side">
-          <SoldLotsPanel soldLots={soldLots} onOpenLoteamento={onOpenLoteamento} />
+          <SoldLotsPanel soldLots={soldLots} onOpenLoteamento={onOpenLoteamento} isVendedor={isVendedor} />
         </aside>
       </div>
     </div>
@@ -339,13 +429,13 @@ function MiniMap({ loteamento }) {
   );
 }
 
-function SoldLotsPanel({ soldLots, onOpenLoteamento }) {
+function SoldLotsPanel({ soldLots, onOpenLoteamento, isVendedor }) {
   const total = soldLots.reduce((sum, lot) => sum + (Number(lot.preco) || 0), 0);
 
   return (
     <div className="side-card">
       <div className="side-head">
-        <h3 className="side-title">Vendas registradas</h3>
+        <h3 className="side-title">{isVendedor ? 'Minhas vendas' : 'Vendas registradas'}</h3>
         <span className="side-link">{soldLots.length} lotes</span>
       </div>
       <div className="sale-total">
@@ -353,7 +443,7 @@ function SoldLotsPanel({ soldLots, onOpenLoteamento }) {
         <b>{fmtBRLShort(total)}</b>
       </div>
       {soldLots.length === 0 ? (
-        <p className="side-empty">Nenhuma venda registrada nos loteamentos carregados.</p>
+        <p className="side-empty">{isVendedor ? 'Você ainda não registrou nenhuma venda.' : 'Nenhuma venda registrada nos loteamentos carregados.'}</p>
       ) : (
         <ul className="sale-list">
           {soldLots.slice(0, 6).map((lot) => (
