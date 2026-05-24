@@ -26,10 +26,13 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
     setLoading(true);
     setError(null);
     getEtapas(lot.db_id)
-      .then(setEtapas)
+      .then((list) => {
+        setEtapas(list);
+        notifyUltimaEtapa(list);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [lot?.db_id]);
+  }, [lot?.db_id]); // notifyUltimaEtapa intentionally omitted — runs only on lot change
 
   function notifyUltimaEtapa(list) {
     const last = list.length > 0 ? list[list.length - 1] : null;

@@ -445,7 +445,19 @@ export default function ImobiliariaApp() {
     if (!saleDraft?.lot?.db_id || !cliente?.id) return;
     try {
       const { lot, loteamentoId, targetStatus = "vendido" } = saleDraft;
-      await updateLoteStatus(lot.db_id, targetStatus, cliente.id, observacao);
+      const patchedLot = await updateLoteStatus(lot.db_id, targetStatus, cliente.id, observacao);
+      // Apply the PATCH response immediately to avoid waiting for the full refresh
+      if (patchedLot) {
+        setLoteamentos((prev) =>
+          prev.map((l) => {
+            if (l.id !== loteamentoId) return l;
+            return { ...l, lots: (l.lots || []).map((lotItem) => lotItem.db_id === lot.db_id ? patchedLot : lotItem) };
+          })
+        );
+        if (selectedLot?.lot?.db_id === lot.db_id) {
+          setSelectedLot((prev) => ({ ...prev, lot: patchedLot }));
+        }
+      }
       const updated = await refreshLoteamento(loteamentoId);
       if (updated && selectedLot && loteamentoId === activeLoteamentoId) {
         const updatedLot = (updated.lots || []).find((l) => l.db_id === lot.db_id);
