@@ -49,12 +49,13 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
-export function UserManagement({ users = [], loading, onRefresh, onCreate, currentUser }) {
+export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpdate, currentUser }) {
   const [query, setQuery] = useState("");
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [apiError, setApiError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -83,6 +84,28 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
     setApiError("");
   }
 
+  function startEdit(user) {
+    setEditingUser(user);
+    setForm({
+      nome: user.nome || "",
+      login: user.login || "",
+      email: user.email || "",
+      telefone: user.telefone ? maskPhone(user.telefone) : "",
+      role: user.role || "vendedor",
+      senha: "",
+      confirmar: "",
+    });
+    setErrors({});
+    setApiError("");
+  }
+
+  function cancelEdit() {
+    setEditingUser(null);
+    setForm(initialForm);
+    setErrors({});
+    setApiError("");
+  }
+
   function validate() {
     const nextErrors = {};
 
@@ -99,13 +122,19 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
       nextErrors.email = "E-mail invalido";
     }
 
-    if (!form.senha) {
-      nextErrors.senha = "Informe a senha";
-    } else if (form.senha.length < 8) {
-      nextErrors.senha = "Minimo de 8 caracteres";
+    if (!editingUser) {
+      if (!form.senha) {
+        nextErrors.senha = "Informe a senha";
+      } else if (form.senha.length < 8) {
+        nextErrors.senha = "Minimo de 8 caracteres";
+      }
+    } else if (form.senha) {
+      if (form.senha.length < 8) {
+        nextErrors.senha = "Minimo de 8 caracteres";
+      }
     }
 
-    if (form.senha !== form.confirmar) {
+    if (form.senha && form.senha !== form.confirmar) {
       nextErrors.confirmar = "As senhas nao conferem";
     }
 
@@ -121,18 +150,33 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
     setApiError("");
 
     try {
-      await onCreate({
-        nome: form.nome.trim(),
-        login: form.login.trim().toLowerCase(),
-        email: form.email.trim().toLowerCase(),
-        telefone: form.telefone.replace(/\D/g, "") || undefined,
-        role: form.role,
-        senha: form.senha,
-      });
-      setForm(initialForm);
-      setErrors({});
+      if (editingUser) {
+        const data = {
+          nome: form.nome.trim(),
+          login: form.login.trim().toLowerCase(),
+          email: form.email.trim().toLowerCase(),
+          telefone: form.telefone.replace(/\D/g, "") || undefined,
+          role: form.role,
+        };
+        if (form.senha) data.senha = form.senha;
+        await onUpdate(editingUser.id, data);
+        setEditingUser(null);
+        setForm(initialForm);
+        setErrors({});
+      } else {
+        await onCreate({
+          nome: form.nome.trim(),
+          login: form.login.trim().toLowerCase(),
+          email: form.email.trim().toLowerCase(),
+          telefone: form.telefone.replace(/\D/g, "") || undefined,
+          role: form.role,
+          senha: form.senha,
+        });
+        setForm(initialForm);
+        setErrors({});
+      }
     } catch (err) {
-      setApiError(err.message || "Erro ao cadastrar usuario");
+      setApiError(err.message || (editingUser ? "Erro ao atualizar usuario" : "Erro ao cadastrar usuario"));
     } finally {
       setSaving(false);
     }
@@ -169,9 +213,22 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
         <form className="user-form-panel" onSubmit={handleSubmit}>
           <div className="user-form-head">
             <div>
-              <h2>Novo usuario</h2>
-              <p>O acesso criado entra automaticamente na empresa atual.</p>
+              <h2>{editingUser ? "Editar usuario" : "Novo usuario"}</h2>
+              <p>
+                {editingUser
+                  ? "Altere os campos desejados e salve as alteracoes."
+                  : "O acesso criado entra automaticamente na empresa atual."}
+              </p>
             </div>
+            {editingUser && (
+              <button
+                type="button"
+                className="sec-tool-btn"
+                onClick={cancelEdit}
+              >
+                Cancelar
+              </button>
+            )}
           </div>
 
           <Field label="Nome completo" error={errors.nome}>
@@ -225,12 +282,12 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
           </Field>
 
           <div className="user-form-grid">
-            <Field label="Senha" error={errors.senha}>
+            <Field label={editingUser ? "Nova senha (opcional)" : "Senha"} error={errors.senha}>
               <input
                 type="password"
                 value={form.senha}
                 onChange={(event) => setField("senha", event.target.value)}
-                placeholder="Minimo 8 caracteres"
+                placeholder={editingUser ? "Deixe em branco para nao alterar" : "Minimo 8 caracteres"}
                 maxLength={72}
               />
             </Field>
@@ -249,7 +306,9 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
           {apiError && <div className="form-alert">{apiError}</div>}
 
           <button className="qa-btn qa-btn-primary user-submit" type="submit" disabled={saving}>
-            {saving ? "Cadastrando..." : "Cadastrar usuario"}
+            {saving
+              ? editingUser ? "Salvando..." : "Cadastrando..."
+              : editingUser ? "Salvar alteracoes" : "Cadastrar usuario"}
           </button>
         </form>
 
@@ -286,11 +345,12 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
                     <th>Telefone</th>
                     <th>Funcao</th>
                     <th>Criado em</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
                   {filteredUsers.map((item) => (
-                    <tr key={item.id}>
+                    <tr key={item.id} className={editingUser?.id === item.id ? "users-row-editing" : ""}>
                       <td>
                         <div className="user-cell">
                           <span className="user-avatar-sm">{initials(item)}</span>
@@ -307,6 +367,17 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, curre
                       <td>{formatPhone(item.telefone)}</td>
                       <td><RolePill role={item.role} /></td>
                       <td>{formatDate(item.created_at)}</td>
+                      <td>
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className="table-action table-action-ghost"
+                            onClick={() => editingUser?.id === item.id ? cancelEdit() : startEdit(item)}
+                          >
+                            {editingUser?.id === item.id ? "Cancelar" : "Editar"}
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

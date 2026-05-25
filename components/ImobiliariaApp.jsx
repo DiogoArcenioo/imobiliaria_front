@@ -24,6 +24,7 @@ import {
   createCliente,
   createMotivoCancelamento,
   createUser,
+  updateUser,
   cancelarVenda,
   createLoteamento,
   computeMetrics,
@@ -290,6 +291,17 @@ export default function ImobiliariaApp() {
     );
     showToast("Usuario cadastrado com sucesso");
     return created;
+  };
+
+  const onUpdateUser = async (id, data) => {
+    const updated = await updateUser(id, data);
+    setUsuarios((prev) =>
+      prev
+        .map((item) => (item.id === updated.id ? updated : item))
+        .sort((a, b) => (a.nome || a.email || "").localeCompare(b.nome || b.email || "", "pt-BR"))
+    );
+    showToast("Usuario atualizado com sucesso");
+    return updated;
   };
 
   const onCreateCliente = async (data) => {
@@ -683,6 +695,7 @@ export default function ImobiliariaApp() {
               usersLoading={usersLoading}
               onRefreshUsers={fetchUsers}
               onCreateUser={onCreateUser}
+              onUpdateUser={onUpdateUser}
               loteamentos={loteamentos}
               tipos={tiposCancelamento}
               tiposLoading={tiposLoading}
@@ -705,6 +718,7 @@ export default function ImobiliariaApp() {
               loading={usersLoading}
               onRefresh={fetchUsers}
               onCreate={onCreateUser}
+              onUpdate={onUpdateUser}
               currentUser={user}
             />
           )}

@@ -34,6 +34,7 @@ export function AdminPanel({
   usersLoading,
   onRefreshUsers,
   onCreateUser,
+  onUpdateUser,
   loteamentos,
   tipos,
   tiposLoading,
@@ -88,6 +89,7 @@ export function AdminPanel({
             loading={usersLoading}
             onRefresh={onRefreshUsers}
             onCreate={onCreateUser}
+            onUpdate={onUpdateUser}
             currentUser={user}
           />
         )}

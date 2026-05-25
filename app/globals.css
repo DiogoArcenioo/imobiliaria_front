@@ -2249,6 +2249,9 @@
   .users-table {
     min-width: 780px;
   }
+  .users-row-editing td {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
   .user-cell {
     display: flex;
     align-items: center;
