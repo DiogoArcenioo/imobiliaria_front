@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 
-export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresas = [], selectedEmpresa, onSelectEmpresa }) => {
+export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresas = [], selectedEmpresa, currentEmpresa, onSelectEmpresa }) => {
   const roleLabels = {
     admin: 'Administrador',
     gerente: 'Gerente',
@@ -31,6 +31,7 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
     client: <path d="M8 8.2a2.9 2.9 0 1 0 0-5.8 2.9 2.9 0 0 0 0 5.8zM3 15v-1.1c0-2.2 2.2-4 5-4s5 1.8 5 4V15" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
     users: <path d="M6.5 8a2.7 2.7 0 1 0 0-5.4A2.7 2.7 0 0 0 6.5 8zM2.5 15v-1.1c0-2 1.8-3.6 4-3.6s4 1.6 4 3.6V15M12 7.7a2.1 2.1 0 1 0 0-4.2M11.6 10.4c1.8.2 3.1 1.6 3.1 3.3V15" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
     shield: <path d="M9 2.5l5 1.8v3.8c0 3.2-1.9 5.7-5 7.1-3.1-1.4-5-3.9-5-7.1V4.3l5-1.8zM6.7 8.8l1.4 1.4 3.2-3.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
+    settings: <path d="M7.2 2.5h3.6l.4 1.9c.4.2.8.4 1.1.7l1.8-.6 1.8 3.1-1.4 1.3c0 .2.1.5.1.7s0 .5-.1.7l1.4 1.3-1.8 3.1-1.8-.6c-.3.3-.7.5-1.1.7l-.4 1.9H7.2l-.4-1.9c-.4-.2-.8-.4-1.1-.7l-1.8.6-1.8-3.1 1.4-1.3c0-.2-.1-.5-.1-.7s0-.5.1-.7L2.1 7.6l1.8-3.1 1.8.6c.3-.3.7-.5 1.1-.7l.4-1.9zM9 11.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none" />,
   };
 
   const initials = user?.nome
@@ -39,6 +40,8 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
 
   const displayName = user?.nome || user?.email || 'Usuario';
   const displayRole = roleLabels[user?.role] || 'Usuario';
+  const brandEmpresa = selectedEmpresa || currentEmpresa || user?.empresa || null;
+  const brandName = brandEmpresa?.nome || user?.empresa_nome || 'Terreno';
 
   return (
     <aside className="sidebar">
@@ -50,7 +53,7 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
           </svg>
         </div>
         <div className="sb-brand-text">
-          <div className="sb-brand-name">Terreno</div>
+          <div className="sb-brand-name">{brandName}</div>
           <div className="sb-brand-sub">Loteamentos e lotes</div>
         </div>
       </div>
@@ -84,6 +87,18 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
       </nav>
 
       <div className="sb-foot">
+        {(user?.role === 'admin' || user?.role === 'gerente') && (
+          <button
+            className={'sb-settings-btn' + (view === 'settings' ? ' sb-settings-btn-active' : '')}
+            onClick={() => onNavigate('settings')}
+            type="button"
+          >
+            <span className="sb-item-ic">
+              <svg width="16" height="16" viewBox="0 0 18 18">{iconPaths.settings}</svg>
+            </span>
+            <span className="sb-item-lbl">Configurações</span>
+          </button>
+        )}
         <div className="sb-user">
           <div className="sb-user-avatar">{initials}</div>
           <div className="sb-user-body">
@@ -184,6 +199,7 @@ export const Header = ({ view, loteamentoNome, onBack }) => {
     clientes: 'Clientes',
     usuarios: 'Usuarios',
     admin: 'Admin',
+    settings: 'Configurações',
   };
 
   return (

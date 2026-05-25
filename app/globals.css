@@ -59,7 +59,8 @@
   .app-compact .sb-item-badge,
   .app-compact .sb-user-body,
   .app-compact .sb-user-menu { display: none; }
-  .app-compact .sb-item { justify-content: center; padding: 10px; }
+  .app-compact .sb-item,
+  .app-compact .sb-settings-btn { justify-content: center; padding: 10px; }
   .app-compact .sb-brand { justify-content: center; }
   .app-compact .sb-user { justify-content: center; }
 
@@ -122,6 +123,9 @@
     padding: 6px 8px 16px;
     cursor: pointer;
   }
+  .sb-brand-text {
+    min-width: 0;
+  }
   .sb-logo {
     width: 36px; height: 36px;
     background: var(--accent);
@@ -132,7 +136,14 @@
     justify-content: center;
     box-shadow: 0 4px 12px rgba(50, 136, 224, 0.35);
   }
-  .sb-brand-name { font-weight: 800; font-size: 15.5px; letter-spacing: -0.01em; }
+  .sb-brand-name {
+    font-weight: 800;
+    font-size: 15.5px;
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .sb-brand-sub { font-size: 11px; color: var(--text-muted); letter-spacing: 0.02em; }
 
   .sb-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
@@ -189,7 +200,8 @@
   }
 
   .sb-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; }
-  .sb-logout-btn {
+  .sb-logout-btn,
+  .sb-settings-btn {
     background: none;
     border: 0;
     width: 100%;
@@ -208,6 +220,14 @@
   .sb-logout-btn:hover {
     background: rgba(239, 68, 68, 0.12);
     color: #f87171;
+  }
+  .sb-settings-btn:hover,
+  .sb-settings-btn-active {
+    background: var(--surface);
+    color: var(--text);
+  }
+  .sb-settings-btn-active .sb-item-ic {
+    color: var(--accent);
   }
   .sb-user {
     display: flex; align-items: center; gap: 10px;
@@ -2177,6 +2197,20 @@
   .user-submit:disabled {
     opacity: 0.75;
     cursor: not-allowed;
+  }
+  .settings-page {
+    max-width: 760px;
+  }
+  .settings-panel {
+    max-width: 560px;
+  }
+  .settings-note {
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .settings-submit {
+    max-width: 220px;
   }
   .users-list-panel {
     padding: 16px;

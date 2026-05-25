@@ -30,6 +30,7 @@ import {
   flattenLots,
   getCancelamentosLog,
   getClientes,
+  getCurrentEmpresa,
   getEmpresas,
   getMotivosCancelamento,
   getTiposCancelamento,
@@ -38,6 +39,7 @@ import {
   getLoteamento,
   saveEditor,
   setAdminEmpresaOverride,
+  updateEmpresaSettings,
   updateMotivoCancelamento,
   updateLoteStatus,
 } from "../lib/api";
@@ -87,6 +89,7 @@ export default function ImobiliariaApp() {
   // Estados para seleção de empresa pelo admin
   const [empresas, setEmpresas] = useState([]);
   const [selectedEmpresa, setSelectedEmpresa] = useState(null);
+  const [currentEmpresa, setCurrentEmpresa] = useState(null);
 
   const mapContainerRef = useRef(null);
 
@@ -117,6 +120,17 @@ export default function ImobiliariaApp() {
   useEffect(() => {
     if (user?.role !== 'admin') fetchLoteamentos();
   }, [fetchLoteamentos, user?.role]);
+
+  useEffect(() => {
+    if (!user || (user.role === 'admin' && !selectedEmpresa)) {
+      setCurrentEmpresa(null);
+      return;
+    }
+
+    getCurrentEmpresa()
+      .then((empresa) => setCurrentEmpresa(empresa))
+      .catch((err) => showToast('Erro ao carregar empresa: ' + err.message, 'error'));
+  }, [user, selectedEmpresa]);
 
   // Admin: carrega lista de empresas e restaura seleção salva (persiste no F5)
   useEffect(() => {
@@ -324,6 +338,17 @@ export default function ImobiliariaApp() {
     return result;
   };
 
+  const onSaveSettings = async (data) => {
+    const updated = await updateEmpresaSettings(data);
+    setCurrentEmpresa(updated);
+    if (selectedEmpresa?.id === updated?.id) {
+      setSelectedEmpresa((current) => ({ ...current, ...updated }));
+      setEmpresas((prev) => prev.map((empresa) => (empresa.id === updated.id ? { ...empresa, ...updated } : empresa)));
+    }
+    showToast("Configurações salvas");
+    return updated;
+  };
+
   // ── Navegação ───────────────────────────────────────────────────────────
 
   const loteamento = activeLoteamentoId
@@ -333,10 +358,13 @@ export default function ImobiliariaApp() {
   const canCreateLoteamento = canCreateLoteamentoByRole(user?.role);
   const canEditLoteamento = canEditLoteamentoByRole(user?.role);
   const canSellLot = canSellByRole(user?.role);
+  const settingsEmpresa = currentEmpresa || selectedEmpresa;
+  const defaultPricePerM2 = Number(settingsEmpresa?.valor_m2_padrao) || 700;
 
   useEffect(() => {
     if (view === "admin" && user?.role !== "admin") setView("dashboard");
     if (view === "usuarios" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
+    if (view === "settings" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
   }, [view, user?.role]);
 
   const onOpenLoteamento = (id) => {
@@ -572,6 +600,7 @@ export default function ImobiliariaApp() {
         onLogout={() => { localStorage.removeItem('admin_empresa_id'); logout(); router.replace('/'); }}
         empresas={empresas}
         selectedEmpresa={selectedEmpresa}
+        currentEmpresa={currentEmpresa}
         onSelectEmpresa={onSelectEmpresa}
       />
       <main className="main">
@@ -637,6 +666,13 @@ export default function ImobiliariaApp() {
                   setClienteReturnSale(null);
                 }
               }}
+            />
+          )}
+
+          {view === "settings" && (user?.role === "gerente" || user?.role === "admin") && (
+            <SettingsView
+              empresa={settingsEmpresa}
+              onSave={onSaveSettings}
             />
           )}
 
@@ -708,6 +744,7 @@ export default function ImobiliariaApp() {
           {view === "editor" && (
             <MapEditor
               initialLoteamento={editorLoteamento}
+              defaultPricePerM2={defaultPricePerM2}
               onBack={() =>
                 setView(editorLoteamento ? "map" : "dashboard")
               }
@@ -723,6 +760,7 @@ export default function ImobiliariaApp() {
             view !== "vendas" &&
             view !== "clientes" &&
             view !== "admin" &&
+            view !== "settings" &&
             view !== "editor" && <EmptyState view={view} />}
         </div>
       </main>
@@ -815,6 +853,72 @@ export default function ImobiliariaApp() {
           onChange={(v) => setTweak("compactSidebar", v)}
         />
       </TweaksPanel>
+    </div>
+  );
+}
+
+function SettingsView({ empresa, onSave }) {
+  const [valorM2, setValorM2] = useState(() => String(Number(empresa?.valor_m2_padrao) || 700));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setValorM2(String(Number(empresa?.valor_m2_padrao) || 700));
+  }, [empresa?.valor_m2_padrao]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+
+    const parsed = Number(String(valorM2).replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setError("Informe um valor por metro quadrado válido.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave({ valor_m2_padrao: parsed });
+    } catch (err) {
+      setError(err.message || "Erro ao salvar configurações.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="settings-page">
+      <form className="user-form-panel settings-panel" onSubmit={handleSubmit}>
+        <div className="user-form-head">
+          <div>
+            <h2>Configurações do sistema</h2>
+            <p>{empresa?.nome || "Empresa atual"}</p>
+          </div>
+        </div>
+
+        <div className="user-form-grid">
+          <label className="user-field">
+            <span>Valor padrão por m²</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={valorM2}
+              onChange={(event) => setValorM2(event.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="settings-note">
+          Esse valor será usado como preço padrão ao criar novos terrenos no editor.
+        </div>
+
+        {error && <div className="form-alert">{error}</div>}
+
+        <button className="btn btn-primary user-submit settings-submit" type="submit" disabled={saving}>
+          {saving ? "Salvando..." : "Salvar configurações"}
+        </button>
+      </form>
     </div>
   );
 }

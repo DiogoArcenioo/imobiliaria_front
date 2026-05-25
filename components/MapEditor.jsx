@@ -13,8 +13,9 @@ const MIN_VIEW_H = 420;
 const MAX_VIEW_W = 4000;
 const MAX_VIEW_H = 3000;
 const GRID = 20;
+const UNITS_PER_METER = 4;
 const ROAD_WIDTH_M = 15;
-const ROAD_WIDTH = ROAD_WIDTH_M * 4;
+const ROAD_WIDTH = ROAD_WIDTH_M * UNITS_PER_METER;
 const ROAD_DRAG_THRESHOLD = 6;
 const ROAD_NODE_SNAP_RADIUS = 24;
 
@@ -28,6 +29,43 @@ function clampCanvasSize(width, height) {
 function parseViewBox(viewBox) {
   const parts = String(viewBox || '').split(/\s+/).map(Number);
   return clampCanvasSize(parts[2] || DEFAULT_VIEW_W, parts[3] || DEFAULT_VIEW_H);
+}
+
+function parseDimension(value) {
+  const parsed = Number(String(value ?? '').replace(',', '.'));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function syncLoteMetricsFromRect(shape) {
+  if (shape.kind !== 'lote') return shape;
+  const frente = (shape.w / UNITS_PER_METER).toFixed(1);
+  const fundo = (shape.h / UNITS_PER_METER).toFixed(1);
+  return {
+    ...shape,
+    frente,
+    fundo,
+    area: Math.round(Number(frente) * Number(fundo)),
+  };
+}
+
+function applyLoteDimensionPatch(shape, patch) {
+  if (shape.kind !== 'lote') return { ...shape, ...patch };
+
+  const next = { ...shape, ...patch };
+  const hasFrentePatch = Object.prototype.hasOwnProperty.call(patch, 'frente');
+  const hasFundoPatch = Object.prototype.hasOwnProperty.call(patch, 'fundo');
+
+  if (!hasFrentePatch && !hasFundoPatch) return next;
+
+  const frente = parseDimension(next.frente) ?? (shape.w / UNITS_PER_METER);
+  const fundo = parseDimension(next.fundo) ?? (shape.h / UNITS_PER_METER);
+
+  return {
+    ...next,
+    w: Math.max(GRID, frente * UNITS_PER_METER),
+    h: Math.max(GRID, fundo * UNITS_PER_METER),
+    area: Math.round(frente * fundo),
+  };
 }
 
 function buildRoadPath(start, segments = []) {
@@ -192,10 +230,18 @@ function findRoadSnapPoint(connectionPoints, rawX, rawY) {
 
 // ── Node editing helpers ───────────────────────────────────────────────────
 
+function rectHandlePoints(x, y, w, h) {
+  return [
+    [x, y], [x + w / 2, y], [x + w, y],
+    [x, y + h / 2], [x + w, y + h / 2],
+    [x, y + h], [x + w / 2, y + h], [x + w, y + h],
+  ];
+}
+
 function getShapeNodes(shape) {
   if (shape.kind === 'lote') {
     const { x, y, w, h } = shape;
-    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+    return rectHandlePoints(x, y, w, h);
   }
   if (shape.kind === 'lote-poly') return shape.points || [];
   if (shape.kind === 'rua' && shape.roadType === 'path') {
@@ -204,25 +250,58 @@ function getShapeNodes(shape) {
   if (shape.kind === 'praca' || shape.kind === 'lago') {
     if (shape.shape === 'rect') {
       const { x, y, w, h } = shape;
-      return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+      return rectHandlePoints(x, y, w, h);
     }
     if (shape.shape === 'poly') return shape.points || [];
-    if (shape.shape === 'ellipse') return [[shape.cx, shape.cy]];
+    if (shape.shape === 'ellipse') return rectHandlePoints(shape.cx - shape.rx, shape.cy - shape.ry, shape.rx * 2, shape.ry * 2);
   }
   return [];
+}
+
+function resizeRectFromHandle(shape, nodeIdx, newX, newY, minSize = GRID) {
+  let x1 = shape.x;
+  let y1 = shape.y;
+  let x2 = shape.x + shape.w;
+  let y2 = shape.y + shape.h;
+
+  if ([0, 3, 5].includes(nodeIdx)) x1 = Math.min(newX, x2 - minSize);
+  if ([2, 4, 7].includes(nodeIdx)) x2 = Math.max(newX, x1 + minSize);
+  if ([0, 1, 2].includes(nodeIdx)) y1 = Math.min(newY, y2 - minSize);
+  if ([5, 6, 7].includes(nodeIdx)) y2 = Math.max(newY, y1 + minSize);
+
+  return { ...shape, x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
+function resizeEllipseFromHandle(shape, nodeIdx, newX, newY, minSize = GRID) {
+  let x1 = shape.cx - shape.rx;
+  let y1 = shape.cy - shape.ry;
+  let x2 = shape.cx + shape.rx;
+  let y2 = shape.cy + shape.ry;
+
+  if ([0, 3, 5].includes(nodeIdx)) x1 = Math.min(newX, x2 - minSize);
+  if ([2, 4, 7].includes(nodeIdx)) x2 = Math.max(newX, x1 + minSize);
+  if ([0, 1, 2].includes(nodeIdx)) y1 = Math.min(newY, y2 - minSize);
+  if ([5, 6, 7].includes(nodeIdx)) y2 = Math.max(newY, y1 + minSize);
+
+  return {
+    ...shape,
+    cx: x1 + (x2 - x1) / 2,
+    cy: y1 + (y2 - y1) / 2,
+    rx: (x2 - x1) / 2,
+    ry: (y2 - y1) / 2,
+  };
+}
+
+function resizeCursorForNode(shape, nodeIdx) {
+  const isRectLike = shape.kind === 'lote' || ((shape.kind === 'praca' || shape.kind === 'lago') && (shape.shape === 'rect' || shape.shape === 'ellipse'));
+  if (!isRectLike) return 'move';
+  return ['nwse-resize', 'ns-resize', 'nesw-resize', 'ew-resize', 'ew-resize', 'nesw-resize', 'ns-resize', 'nwse-resize'][nodeIdx] || 'move';
 }
 
 function moveNodeInShape(shape, nodeIdx, newX, newY) {
   const minSize = GRID;
   if (shape.kind === 'lote') {
-    const { x, y, w, h } = shape;
-    switch (nodeIdx) {
-      case 0: return { ...shape, x: newX, y: newY, w: Math.max(minSize, x + w - newX), h: Math.max(minSize, y + h - newY) };
-      case 1: return { ...shape, w: Math.max(minSize, newX - x), y: newY, h: Math.max(minSize, y + h - newY) };
-      case 2: return { ...shape, w: Math.max(minSize, newX - x), h: Math.max(minSize, newY - y) };
-      case 3: return { ...shape, x: newX, w: Math.max(minSize, x + w - newX), h: Math.max(minSize, newY - y) };
-      default: return shape;
-    }
+    return syncLoteMetricsFromRect(resizeRectFromHandle(shape, nodeIdx, newX, newY, minSize));
   }
   if (shape.kind === 'lote-poly') {
     const pts = [...shape.points]; pts[nodeIdx] = [newX, newY]; return { ...shape, points: pts };
@@ -238,16 +317,9 @@ function moveNodeInShape(shape, nodeIdx, newX, newY) {
   }
   if (shape.kind === 'praca' || shape.kind === 'lago') {
     if (shape.shape === 'rect') {
-      const { x, y, w, h } = shape;
-      switch (nodeIdx) {
-        case 0: return { ...shape, x: newX, y: newY, w: Math.max(minSize, x + w - newX), h: Math.max(minSize, y + h - newY) };
-        case 1: return { ...shape, w: Math.max(minSize, newX - x), y: newY, h: Math.max(minSize, y + h - newY) };
-        case 2: return { ...shape, w: Math.max(minSize, newX - x), h: Math.max(minSize, newY - y) };
-        case 3: return { ...shape, x: newX, w: Math.max(minSize, x + w - newX), h: Math.max(minSize, newY - y) };
-        default: return shape;
-      }
+      return resizeRectFromHandle(shape, nodeIdx, newX, newY, minSize);
     }
-    if (shape.shape === 'ellipse' && nodeIdx === 0) return { ...shape, cx: newX, cy: newY };
+    if (shape.shape === 'ellipse') return resizeEllipseFromHandle(shape, nodeIdx, newX, newY, minSize);
     if (shape.shape === 'poly') {
       const pts = [...shape.points]; pts[nodeIdx] = [newX, newY]; return { ...shape, points: pts };
     }
@@ -446,7 +518,7 @@ const TOOL_ICONS = {
   ),
 };
 
-export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false }) => {
+export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, defaultPricePerM2 = 700 }) => {
   const [tool, setTool] = useStateEd('lote');
   const [shapes, setShapes] = useStateEd(() => loteamentoToShapes(initialLoteamento));
   const [canvasSize, setCanvasSize] = useStateEd(() => parseViewBox(initialLoteamento?.viewBox));
@@ -484,6 +556,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
   const dragShape = useRefEd(null); // { ids[], origins[], startX, startY, didPush }
   const roadSegmentDrag = useRefEd(null);
   const activeNodeDrag = useRefEd(null); // { shapeId, nodeIdx, originShape, startX, startY, didPush }
+  const clipboardShapes = useRefEd([]);
   const [isDraggingShape, setIsDraggingShape] = useStateEd(false);
 
   const selectedShape = shapes.find((s) => s.id === selectedId);
@@ -534,7 +607,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
 
   const updateShape = (id, patch) => {
     pushHistory();
-    setShapes((s) => s.map((sh) => (sh.id === id ? { ...sh, ...patch } : sh)));
+    setShapes((s) => s.map((sh) => (sh.id === id ? applyLoteDimensionPatch(sh, patch) : sh)));
   };
 
   const updateCanvasSize = (patch) => {
@@ -567,6 +640,64 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
     return shape;
   };
 
+  const selectedShapeIds = () => {
+    if (selectedIds.length) return selectedIds;
+    return selectedId ? [selectedId] : [];
+  };
+
+  const copySelectedShapes = () => {
+    if (tool !== 'select') return false;
+    const ids = selectedShapeIds();
+    if (!ids.length) return false;
+    clipboardShapes.current = shapes
+      .filter((shape) => ids.includes(shape.id))
+      .map((shape) => JSON.parse(JSON.stringify(shape)));
+    return clipboardShapes.current.length > 0;
+  };
+
+  const createCopiedShapes = (sourceShapes, dx = GRID, dy = GRID) => {
+    const pasteKey = Date.now();
+    const lotNumberByQuadra = new Map();
+    for (const shape of shapes) {
+      if (shape.kind === 'lote' || shape.kind === 'lote-poly') {
+        const quadra = shape.quadra || defaultQuadra;
+        lotNumberByQuadra.set(quadra, Math.max(lotNumberByQuadra.get(quadra) || 0, Number(shape.numero) || 0));
+      }
+    }
+
+    return sourceShapes.map((shape, index) => {
+      const next = moveShapeBy(JSON.parse(JSON.stringify(shape)), dx, dy);
+      next.id = `sh-copy-${pasteKey}-${index}`;
+
+      if (next.kind === 'lote' || next.kind === 'lote-poly') {
+        const quadra = next.quadra || defaultQuadra;
+        const numero = (lotNumberByQuadra.get(quadra) || 0) + 1;
+        lotNumberByQuadra.set(quadra, numero);
+        next.quadra = quadra;
+        next.numero = numero;
+        next.status = 'disponivel';
+      }
+
+      return next;
+    });
+  };
+
+  const pasteCopiedShapes = () => {
+    if (tool !== 'select' || !clipboardShapes.current.length) return false;
+    pushHistory();
+
+    const pasted = createCopiedShapes(clipboardShapes.current);
+
+    const pastedIds = pasted.map((shape) => shape.id);
+    clipboardShapes.current = pasted.map((shape) => JSON.parse(JSON.stringify(shape)));
+    setShapes((current) => [...current, ...pasted]);
+    setSelectedIds(pastedIds);
+    setSelectedId(pastedIds[pastedIds.length - 1] || null);
+    setSelectedNodeKeys(new Set());
+    setTool('select');
+    return true;
+  };
+
   const deleteShape = (id) => {
     pushHistory();
     setShapes((s) => s.filter((sh) => sh.id !== id));
@@ -584,11 +715,11 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
       next.quadra = defaultQuadra;
       next.numero = maxNum + 1;
       next.status = 'disponivel';
-      const area = Math.round((sh.w / 4) * (sh.h / 4));  // assume 4 SVG units = 1m
+      const area = Math.round((sh.w / UNITS_PER_METER) * (sh.h / UNITS_PER_METER));
       next.area = area;
-      next.frente = (sh.w / 4).toFixed(1);
-      next.fundo = (sh.h / 4).toFixed(1);
-      next.preco = area * 700;
+      next.frente = (sh.w / UNITS_PER_METER).toFixed(1);
+      next.fundo = (sh.h / UNITS_PER_METER).toFixed(1);
+      next.preco = area * defaultPricePerM2;
     }
     setShapes((s) => [...s, next]);
     return id;
@@ -709,7 +840,19 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
         if (shape) {
           const dragIds = selectedIds.includes(id) && !e.shiftKey ? selectedIds : (selectedIds.includes(id) ? selectedIds : [id]);
           const origins = dragIds.map((did) => shapes.find((s) => s.id === did)).filter(Boolean);
-          dragShape.current = { ids: dragIds, origins, startX: rawX, startY: rawY, didPush: false };
+
+          if (e.altKey && origins.length) {
+            pushHistory();
+            const copied = createCopiedShapes(origins, 0, 0);
+            const copiedIds = copied.map((copiedShape) => copiedShape.id);
+            setShapes((current) => [...current, ...copied]);
+            setSelectedIds(copiedIds);
+            setSelectedId(copiedIds[copiedIds.length - 1] || null);
+            clipboardShapes.current = copied.map((copiedShape) => JSON.parse(JSON.stringify(copiedShape)));
+            dragShape.current = { ids: copiedIds, origins: copied, startX: rawX, startY: rawY, didPush: true };
+          } else {
+            dragShape.current = { ids: dragIds, origins, startX: rawX, startY: rawY, didPush: false };
+          }
         }
         return;
       }
@@ -960,7 +1103,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
         numero: maxNum + 1,
         status: 'disponivel',
         area: Math.round(area),
-        preco: Math.round(area) * 700,
+        preco: Math.round(area) * defaultPricePerM2,
       }]);
       setSelectedId(id);
     }
@@ -1037,6 +1180,19 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
   useEffectEd(() => {
     const onKey = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      const modKey = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+
+      if (modKey && key === 'c') {
+        if (copySelectedShapes()) e.preventDefault();
+        return;
+      }
+
+      if (modKey && key === 'v') {
+        if (pasteCopiedShapes()) e.preventDefault();
+        return;
+      }
+
       if (e.key === 'Escape') {
         e.preventDefault();
         if (finishActiveDraft()) return;
@@ -1066,7 +1222,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
           deleteShape(selectedId);
         }
       }
-      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); handleUndo(); }
+      else if (modKey && key === 'z') { e.preventDefault(); handleUndo(); }
       else {
         const t = TOOL_LIST.find((t) => t.shortcut === e.key.toUpperCase());
         if (t) activateTool(t.id);
@@ -1074,7 +1230,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [polyPoints, lagoPolyPoints, pracaPolyPoints, selectedId, shapes, roadDraft]);
+  }, [polyPoints, lagoPolyPoints, pracaPolyPoints, selectedId, selectedIds, shapes, roadDraft, tool, defaultQuadra]);
 
   // ── compute stats ──────────────────────────────────────────────────────
   const stats = useMemoEd(() => {
@@ -1472,6 +1628,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false })
                           (active ? ' ed-node-active' : ' ed-node-dim') +
                           (isNodeSel ? ' ed-node-selected' : '')
                         }
+                        style={{ cursor: resizeCursorForNode(shape, idx) }}
                       />
                     );
                   });
@@ -2255,7 +2412,7 @@ function DrawingPreview({ drawing, lagoSubtool, pracaSubtool }) {
         stroke="#3288e0" strokeWidth="1.5" strokeDasharray="6 4" />
       <text x={x + w/2} y={y + h/2 + 4} fontSize="11" textAnchor="middle"
         fontFamily="JetBrains Mono" fontWeight="600" fill="#3288e0" pointerEvents="none">
-        {Math.round(w/4)}×{Math.round(h/4)} m
+        {Math.round(w / UNITS_PER_METER)}x{Math.round(h / UNITS_PER_METER)} m
       </text>
     </g>
   );
@@ -2364,13 +2521,13 @@ function PropertiesPanel({ shape, onChange, onDelete, tool, shapes, canvasSize, 
           {shape.kind === 'lote' ? (
             <>
               <PRow label="Frente (m)">
-                <input type="number" step="0.5" value={shape.frente || (shape.w/4).toFixed(1)} onChange={(e) => onChange({ frente: e.target.value })} />
+                <input type="number" step="0.5" value={shape.frente || (shape.w / UNITS_PER_METER).toFixed(1)} onChange={(e) => onChange({ frente: e.target.value })} />
               </PRow>
               <PRow label="Fundo (m)">
-                <input type="number" step="0.5" value={shape.fundo || (shape.h/4).toFixed(1)} onChange={(e) => onChange({ fundo: e.target.value })} />
+                <input type="number" step="0.5" value={shape.fundo || (shape.h / UNITS_PER_METER).toFixed(1)} onChange={(e) => onChange({ fundo: e.target.value })} />
               </PRow>
               <PRow label="Área (m²)">
-                <input type="number" value={shape.area || Math.round(shape.w * shape.h / 16)} onChange={(e) => onChange({ area: parseInt(e.target.value) || 0 })} />
+                <input type="number" value={shape.area || Math.round(shape.w * shape.h / (UNITS_PER_METER * UNITS_PER_METER))} onChange={(e) => onChange({ area: parseInt(e.target.value) || 0 })} />
               </PRow>
             </>
           ) : (
@@ -2416,7 +2573,7 @@ function PropertiesPanel({ shape, onChange, onDelete, tool, shapes, canvasSize, 
           {shape.roadType === 'path' ? (
             <>
               <PRow label="Grossura">
-                <span className="p-readonly">{((shape.width || ROAD_WIDTH) / 4).toFixed(1)} m</span>
+                <span className="p-readonly">{((shape.width || ROAD_WIDTH) / UNITS_PER_METER).toFixed(1)} m</span>
               </PRow>
               <PRow label="Trechos">
                 <span className="p-readonly">{(shape.segments || []).length}</span>
@@ -2425,10 +2582,10 @@ function PropertiesPanel({ shape, onChange, onDelete, tool, shapes, canvasSize, 
           ) : (
             <>
               <PRow label="Largura">
-                <span className="p-readonly">{(shape.w / 4).toFixed(1)} m</span>
+                <span className="p-readonly">{(shape.w / UNITS_PER_METER).toFixed(1)} m</span>
               </PRow>
               <PRow label="Comprimento">
-                <span className="p-readonly">{(shape.h / 4).toFixed(1)} m</span>
+                <span className="p-readonly">{(shape.h / UNITS_PER_METER).toFixed(1)} m</span>
               </PRow>
             </>
           )}
