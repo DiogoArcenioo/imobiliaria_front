@@ -369,13 +369,15 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
                       <td>{formatDate(item.created_at)}</td>
                       <td>
                         <div className="table-actions">
-                          <button
-                            type="button"
-                            className="table-action table-action-ghost"
-                            onClick={() => editingUser?.id === item.id ? cancelEdit() : startEdit(item)}
-                          >
-                            {editingUser?.id === item.id ? "Cancelar" : "Editar"}
-                          </button>
+                          {(currentUser?.role === "admin" || item.role !== "admin") && (
+                            <button
+                              type="button"
+                              className="table-action table-action-ghost"
+                              onClick={() => editingUser?.id === item.id ? cancelEdit() : startEdit(item)}
+                            >
+                              {editingUser?.id === item.id ? "Cancelar" : "Editar"}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

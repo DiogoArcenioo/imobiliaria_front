@@ -222,7 +222,7 @@ function LeftPanel({ step }) {
     { icon:'🏢', title:'Dados da empresa',     sub:'Informações básicas da sua imobiliária' },
     { icon:'📍', title:'Endereço',              sub:'Localização da sua sede' },
     { icon:'👤', title:'Responsável legal',     sub:'Dados do sócio ou administrador' },
-    { icon:'🔐', title:'Acesso ao sistema',     sub:'Crie o login do administrador' },
+    { icon:'🔐', title:'Acesso ao sistema',     sub:'Crie o login do gerente principal' },
   ];
   const current = stepInfo[step - 1] ?? stepInfo[0];
 
@@ -734,8 +734,8 @@ export default function CadastroPage() {
           {step === 4 && (
             <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
               <div style={{ marginBottom:4 }}>
-                <h2 style={{ fontSize:24, fontWeight:800, color: C.navy, margin:'0 0 6px' }}>Usuário administrador</h2>
-                <p style={{ color: C.muted, fontSize:14, margin:0, lineHeight:1.6 }}>Crie o acesso principal para gerenciar o sistema.</p>
+                <h2 style={{ fontSize:24, fontWeight:800, color: C.navy, margin:'0 0 6px' }}>Acesso ao sistema</h2>
+                <p style={{ color: C.muted, fontSize:14, margin:0, lineHeight:1.6 }}>Crie o login do gerente principal da empresa. A partir dele você pode cadastrar vendedores e outros gerentes.</p>
               </div>
 
               <Field label="Nome completo" required error={errs.aNome}>
