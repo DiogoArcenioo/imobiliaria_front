@@ -12,6 +12,8 @@ import { ClienteManagement, formatCpfCnpj } from "./ClienteManagement";
 import { SaleDialog } from "./SaleDialog";
 import { AdminPanel } from "./AdminPanel";
 import { UserManagement } from "./UserManagement";
+import { PredioManagement } from "./PredioManagement";
+import { PredioWizard } from "./PredioWizard";
 import {
   TweakColor,
   TweakRadio,
@@ -43,6 +45,11 @@ import {
   updateEmpresaSettings,
   updateMotivoCancelamento,
   updateLoteStatus,
+  getPredios,
+  getPredio,
+  createPredio,
+  saveFloorPlan,
+  updateApartamentoStatus,
 } from "../lib/api";
 import { fmtBRL, fmtBRLShort, statusLabel } from "../lib/data";
 import { useAuth } from "../context/AuthContext";
@@ -86,6 +93,12 @@ export default function ImobiliariaApp() {
   const [saleDraft, setSaleDraft] = useState(null);
   const [clienteReturnSale, setClienteReturnSale] = useState(null);
   const [drawerLot, setDrawerLot] = useState(null);
+
+  // Prédios
+  const [predios, setPredios] = useState([]);
+  const [prediosLoading, setPrediosLoading] = useState(false);
+  const [activePredioId, setActivePredioId] = useState(null);
+  const [showPredioWizard, setShowPredioWizard] = useState(false);
 
   // Estados para seleção de empresa pelo admin
   const [empresas, setEmpresas] = useState([]);
@@ -133,39 +146,6 @@ export default function ImobiliariaApp() {
       .catch((err) => showToast('Erro ao carregar empresa: ' + err.message, 'error'));
   }, [user, selectedEmpresa]);
 
-  // Admin: carrega lista de empresas e restaura seleção salva (persiste no F5)
-  useEffect(() => {
-    if (user?.role !== 'admin') return;
-    getEmpresas()
-      .then((list) => {
-        setEmpresas(list);
-        const savedId = localStorage.getItem('admin_empresa_id');
-        if (savedId) {
-          const saved = list.find((e) => String(e.id) === savedId);
-          if (saved) {
-            setSelectedEmpresa(saved);
-            setAdminEmpresaOverride(saved.id);
-            setLoading(true);
-            fetchLoteamentos();
-          }
-        }
-      })
-      .catch((err) => showToast('Erro ao carregar empresas: ' + err.message, 'error'));
-  }, [user?.role, fetchLoteamentos]);
-
-  const onSelectEmpresa = useCallback((empresa) => {
-    setSelectedEmpresa(empresa);
-    setAdminEmpresaOverride(empresa?.id ?? null);
-    if (empresa?.id) {
-      localStorage.setItem('admin_empresa_id', String(empresa.id));
-    } else {
-      localStorage.removeItem('admin_empresa_id');
-    }
-    setLoteamentos([]);
-    setLoading(true);
-    if (empresa?.id) fetchLoteamentos();
-  }, [fetchLoteamentos]);
-
   const fetchUsers = useCallback(async () => {
     if (user?.role !== "admin" && user?.role !== "gerente") {
       setUsuarios([]);
@@ -187,26 +167,15 @@ export default function ImobiliariaApp() {
     fetchUsers();
   }, [fetchUsers]);
 
-  const fetchClientes = useCallback(async (search = "") => {
-    setClientesLoading(true);
-    try {
-      const data = await getClientes(search);
-      setClientes(data);
-      return data;
-    } catch (err) {
-      showToast("Erro ao carregar clientes: " + err.message, "error");
-      return [];
-    } finally {
-      setClientesLoading(false);
-    }
-  }, []);
+  // ── Cancelamentos / Tipos / Motivos (admin-only, escopo por empresa) ────────
+  // Declarados ANTES dos hooks que os referenciam nos arrays de dependência
+  // para evitar Temporal Dead Zone (TDZ) do JavaScript.
 
   const fetchTiposCancelamento = useCallback(async () => {
     if (user?.role !== "admin") {
       setTiposCancelamento([]);
       return [];
     }
-
     setTiposLoading(true);
     try {
       const data = await getTiposCancelamento();
@@ -225,7 +194,6 @@ export default function ImobiliariaApp() {
       setMotivosCancelamento([]);
       return [];
     }
-
     setMotivosLoading(true);
     try {
       const data = await getMotivosCancelamento();
@@ -244,7 +212,6 @@ export default function ImobiliariaApp() {
       setCancelamentosLog([]);
       return [];
     }
-
     setLogsLoading(true);
     try {
       const data = await getCancelamentosLog();
@@ -258,11 +225,147 @@ export default function ImobiliariaApp() {
     }
   }, [user?.role]);
 
+  const fetchPredios = useCallback(async () => {
+    setPrediosLoading(true);
+    try {
+      const data = await getPredios();
+      setPredios(data);
+    } catch (err) {
+      showToast("Erro ao carregar prédios: " + err.message, "error");
+    } finally {
+      setPrediosLoading(false);
+    }
+  }, []);
+
+  // Admins só carregam esses dados depois de selecionar uma empresa.
+  // Sem empresa, o backend retorna 403 (withTenantContext exige empresa_id).
   useEffect(() => {
+    if (user?.role === 'admin') return;
     fetchTiposCancelamento();
     fetchMotivosCancelamento();
     fetchCancelamentosLog();
-  }, [fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
+  }, [user?.role, fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
+
+  // Admin: carrega lista de empresas e restaura seleção salva (persiste no F5)
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    getEmpresas()
+      .then((list) => {
+        setEmpresas(list);
+        const savedId = localStorage.getItem('admin_empresa_id');
+        if (savedId) {
+          const saved = list.find((e) => String(e.id) === savedId);
+          if (saved) {
+            setSelectedEmpresa(saved);
+            setAdminEmpresaOverride(saved.id);
+            setLoading(true);
+            fetchLoteamentos();
+            fetchPredios();
+            fetchUsers();
+            // Carrega dados filtrados pela empresa restaurada do localStorage
+            fetchTiposCancelamento();
+            fetchMotivosCancelamento();
+            fetchCancelamentosLog();
+          }
+        }
+      })
+      .catch((err) => showToast('Erro ao carregar empresas: ' + err.message, 'error'));
+  }, [user?.role, fetchLoteamentos, fetchPredios, fetchUsers, fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
+
+  const onSelectEmpresa = useCallback((empresa) => {
+    setSelectedEmpresa(empresa);
+    setAdminEmpresaOverride(empresa?.id ?? null);
+    if (empresa?.id) {
+      localStorage.setItem('admin_empresa_id', String(empresa.id));
+    } else {
+      localStorage.removeItem('admin_empresa_id');
+    }
+    // Limpa TODOS os dados da empresa anterior
+    setLoteamentos([]);
+    setPredios([]);
+    setUsuarios([]);
+    setTiposCancelamento([]);
+    setMotivosCancelamento([]);
+    setCancelamentosLog([]);
+    setLoading(true);
+    if (empresa?.id) {
+      // Recarrega tudo para a nova empresa selecionada
+      fetchLoteamentos();
+      fetchPredios();
+      fetchUsers();
+      fetchTiposCancelamento();
+      fetchMotivosCancelamento();
+      fetchCancelamentosLog();
+    }
+  }, [fetchLoteamentos, fetchPredios, fetchUsers, fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
+
+  const fetchClientes = useCallback(async (search = "") => {
+    setClientesLoading(true);
+    try {
+      const data = await getClientes(search);
+      setClientes(data);
+      return data;
+    } catch (err) {
+      showToast("Erro ao carregar clientes: " + err.message, "error");
+      return [];
+    } finally {
+      setClientesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user?.role !== 'admin' || selectedEmpresa) fetchPredios();
+  }, [fetchPredios, user?.role, selectedEmpresa]);
+
+  const refreshPredio = useCallback(async (id) => {
+    try {
+      const updated = await getPredio(id);
+      setPredios((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      return updated;
+    } catch (err) {
+      showToast("Erro ao atualizar prédio: " + err.message, "error");
+    }
+  }, []);
+
+  const onCreatePredio = async (data) => {
+    if (user?.somente_leitura) {
+      showToast("Conta em modo somente leitura.", "error");
+      return;
+    }
+    try {
+      const created = await createPredio(data);
+      setPredios((prev) => [created, ...prev]);
+      setActivePredioId(created.id);
+      setShowPredioWizard(false);
+      setView("predio");
+      showToast(
+        `O prédio "${created.nome}" e seus ${created.num_andares} andares já estão prontos para receber a planta baixa.`,
+        "success",
+        "Prédio criado com sucesso"
+      );
+    } catch (err) {
+      showToast("Erro ao criar prédio: " + err.message, "error");
+    }
+  };
+
+  const onSaveFloorPlan = async (predioId, andarNumero, shapes, aps) => {
+    try {
+      await saveFloorPlan(predioId, andarNumero, shapes, aps);
+      await refreshPredio(predioId);
+      showToast("Planta baixa salva com sucesso");
+    } catch (err) {
+      showToast("Erro ao salvar planta: " + err.message, "error");
+    }
+  };
+
+  const onUpdateApStatus = async (apId, status, clienteId, observacao) => {
+    try {
+      await updateApartamentoStatus(apId, status, clienteId, observacao);
+      if (activePredioId) await refreshPredio(activePredioId);
+    } catch (err) {
+      showToast("Erro: " + err.message, "error");
+    }
+  };
 
   // Recarrega um loteamento específico e atualiza a lista local
   const refreshLoteamento = useCallback(async (id) => {
@@ -277,8 +380,8 @@ export default function ImobiliariaApp() {
     }
   }, []);
 
-  const showToast = (msg, type = "success") => {
-    setToast({ msg, type });
+  const showToast = (msg, type = "success", title) => {
+    setToast({ msg, type, title });
     setTimeout(() => setToast(null), 3500);
   };
 
@@ -367,16 +470,27 @@ export default function ImobiliariaApp() {
     ? loteamentos.find((l) => l.id === activeLoteamentoId) || null
     : null;
   const metrics = computeMetrics(loteamentos);
-  const canCreateLoteamento = canCreateLoteamentoByRole(user?.role);
-  const canEditLoteamento = canEditLoteamentoByRole(user?.role);
-  const canSellLot = canSellByRole(user?.role);
+
+  // Modo somente leitura: assinatura vencida/inativa — pode ver mas não modificar
+  const somenteLeitura = !!(user?.somente_leitura);
+
+  const canCreateLoteamento = canCreateLoteamentoByRole(user?.role) && !somenteLeitura;
+  const canEditLoteamento   = canEditLoteamentoByRole(user?.role)   && !somenteLeitura;
+  const canSellLot          = canSellByRole(user?.role)             && !somenteLeitura;
   const settingsEmpresa = currentEmpresa || selectedEmpresa;
+
+  // Info do plano para UserManagement
+  const planoInfo = settingsEmpresa?.plano_id
+    ? { max_usuarios: settingsEmpresa.max_usuarios ?? null, nome: settingsEmpresa.plano ?? "—" }
+    : null;
   const defaultPricePerM2 = Number(settingsEmpresa?.valor_m2_padrao) || 700;
 
   useEffect(() => {
     if (view === "admin" && user?.role !== "admin") setView("dashboard");
     if (view === "usuarios" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
     if (view === "settings" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
+    // Pré-carrega clientes ao abrir gerenciamento de prédios
+    if (view === "predio" && clientes.length === 0) fetchClientes('');
   }, [view, user?.role]);
 
   const onOpenLoteamento = (id) => {
@@ -393,6 +507,11 @@ export default function ImobiliariaApp() {
   // ── Editor ──────────────────────────────────────────────────────────────
 
   const onOpenEditor = (existing) => {
+    if (somenteLeitura) {
+      showToast("Conta em modo somente leitura. Renove sua assinatura para editar loteamentos.", "error");
+      return;
+    }
+
     if (!existing && !canCreateLoteamento) {
       showToast("Apenas administradores podem criar loteamentos", "error");
       return;
@@ -460,12 +579,10 @@ export default function ImobiliariaApp() {
       return;
     }
 
-    if (id === "dashboard" || id === "loteamentos") {
-      setView(id);
-      setSelectedLot(null);
-    } else {
-      setView(id);
-      setSelectedLot(null);
+    setView(id);
+    setSelectedLot(null);
+    if (id === "predios") {
+      setActivePredioId(null);
     }
   };
 
@@ -473,6 +590,10 @@ export default function ImobiliariaApp() {
 
   const openSaleDialog = (lot, loteamentoId = activeLoteamentoId, targetStatus = "vendido") => {
     if (!lot.db_id) return;
+    if (somenteLeitura) {
+      showToast("Conta em modo somente leitura. Renove sua assinatura para registrar vendas.", "error");
+      return;
+    }
     if (!canSellLot) {
       showToast("Seu usuario nao pode vender lotes", "error");
       return;
@@ -607,6 +728,7 @@ export default function ImobiliariaApp() {
           vendas: metrics.ven,
           clientes: clientes.length,
           usuarios: usuarios.length,
+          predios: predios.length,
         }}
         user={user}
         onLogout={() => { localStorage.removeItem('admin_empresa_id'); logout(); router.replace('/'); }}
@@ -624,13 +746,39 @@ export default function ImobiliariaApp() {
           />
         )}
         <div className="content">
+          {/* Banner de assinatura vencida/inativa — somente leitura */}
+          {somenteLeitura && user?.role !== "admin" && (
+            <div style={{
+              background: "linear-gradient(90deg,#fff7ed,#fff0f0)",
+              border: "1px solid #fed7aa",
+              borderRadius: 10,
+              padding: "12px 18px",
+              marginBottom: "1rem",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: "0.875rem",
+              color: "#c2410c",
+              boxShadow: "0 1px 4px rgba(194,65,12,0.08)",
+            }}>
+              🔒&nbsp;
+              <span>
+                <strong>Conta em modo somente leitura.</strong> Sua assinatura está vencida ou a conta foi desativada.
+                Você pode visualizar os dados, mas não criar ou alterar registros.
+                {" "}Entre em contato com o administrador do sistema para renovar.
+              </span>
+            </div>
+          )}
+
           {(view === "dashboard" || view === "loteamentos") && (
             <Dashboard
               loteamentos={loteamentos}
+              predios={predios}
               loading={loading}
               onOpenLoteamento={onOpenLoteamento}
               onOpenEditor={onOpenEditor}
               onRefresh={fetchLoteamentos}
+              onOpenPredios={() => setView("predios")}
               canCreateLoteamento={canCreateLoteamento}
               canEditLoteamento={canEditLoteamento}
               user={user}
@@ -720,6 +868,8 @@ export default function ImobiliariaApp() {
               onCreate={onCreateUser}
               onUpdate={onUpdateUser}
               currentUser={user}
+              planoInfo={planoInfo}
+              somenteLeitura={somenteLeitura}
             />
           )}
 
@@ -767,6 +917,28 @@ export default function ImobiliariaApp() {
             />
           )}
 
+          {view === "predios" && (
+            <PrediosListView
+              predios={predios}
+              loading={prediosLoading}
+              canCreate={canCreateLoteamento}
+              onOpenPredio={(id) => { setActivePredioId(id); setView("predio"); }}
+              onNewPredio={() => setShowPredioWizard(true)}
+            />
+          )}
+
+          {view === "predio" && activePredioId && (
+            <PredioManagement
+              predio={predios.find((p) => p.id === activePredioId) || null}
+              onBack={() => setView("predios")}
+              onSaveFloorPlan={onSaveFloorPlan}
+              onUpdateApStatus={onUpdateApStatus}
+              clientes={clientes}
+              user={user}
+              onRefresh={() => refreshPredio(activePredioId)}
+            />
+          )}
+
           {view !== "dashboard" &&
             view !== "loteamentos" &&
             view !== "map" &&
@@ -775,9 +947,19 @@ export default function ImobiliariaApp() {
             view !== "clientes" &&
             view !== "admin" &&
             view !== "settings" &&
-            view !== "editor" && <EmptyState view={view} />}
+            view !== "editor" &&
+            view !== "predios" &&
+            view !== "predio" &&
+            view !== "usuarios" && <EmptyState view={view} />}
         </div>
       </main>
+
+      {showPredioWizard && (
+        <PredioWizard
+          onConfirm={onCreatePredio}
+          onCancel={() => setShowPredioWizard(false)}
+        />
+      )}
 
       {drawerLot && (
         <NegociacaoDrawer
@@ -804,30 +986,55 @@ export default function ImobiliariaApp() {
       )}
 
       {toast && (
-        <div className={"toast" + (toast.type === "error" ? " toast-error" : "")}>
-          {toast.type !== "error" ? (
+        <div
+          className={"toast" + (toast.type === "error" ? " toast-error" : "")}
+          role={toast.type === "error" ? "alert" : "status"}
+        >
+          <div className="toast-icon" aria-hidden="true">
+            {toast.type !== "error" ? (
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <circle cx="11" cy="11" r="10" fill="currentColor" />
+                <path
+                  d="M7 11.2l2.5 2.5L15.4 8"
+                  stroke="#ffffff"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <circle cx="11" cy="11" r="10" fill="currentColor" />
+                <path
+                  d="M7.5 7.5l7 7m0-7l-7 7"
+                  stroke="#fff"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
+          </div>
+          <div className="toast-copy">
+            <strong className="toast-title">
+              {toast.title || (toast.type === "error" ? "Não foi possível concluir" : "Tudo certo")}
+            </strong>
+            <span className="toast-message">{toast.msg}</span>
+          </div>
+          <button
+            type="button"
+            className="toast-close"
+            onClick={() => setToast(null)}
+            aria-label="Fechar mensagem"
+          >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="7" fill="#3288e0" />
               <path
-                d="M5 8l2 2 4-4"
-                stroke="#ffffff"
-                strokeWidth="1.8"
+                d="M4 4l8 8m0-8l-8 8"
+                stroke="currentColor"
+                strokeWidth="1.6"
                 strokeLinecap="round"
-                strokeLinejoin="round"
               />
             </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="7" fill="#ef4444" />
-              <path
-                d="M5 5l6 6M11 5l-6 6"
-                stroke="#fff"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          )}
-          {toast.msg}
+          </button>
         </div>
       )}
 
@@ -1121,6 +1328,76 @@ function LoteamentoSwitcher({ loteamentos, current, onSwitch, onEdit, canEditLot
         </>
       )}
     </div>
+  );
+}
+
+function PrediosListView({ predios, loading, canCreate, onOpenPredio, onNewPredio }) {
+  const AP_STATUS_COLORS = {
+    disponivel: '#22c55e',
+    reservado: '#f59e0b',
+    vendido: '#ef4444',
+    alugado: '#8b5cf6',
+  };
+
+  return (
+    <section className="list-page">
+      <header className="list-page-head">
+        <div>
+          <div className="dash-eyebrow">PRÉDIOS</div>
+          <h1 className="list-page-title">Prédios cadastrados</h1>
+          <p className="dash-sub">Gerencie prédios, andares e apartamentos para venda ou aluguel.</p>
+        </div>
+        {canCreate && (
+          <button className="qa-btn qa-btn-primary" onClick={onNewPredio}>
+            <span className="qa-ic" style={{ color: '#ffffff' }}>+</span>
+            Novo Prédio
+          </button>
+        )}
+      </header>
+
+      {loading ? (
+        <div className="list-empty">Carregando prédios...</div>
+      ) : predios.length === 0 ? (
+        <div className="list-empty">
+          <p>Nenhum prédio cadastrado.</p>
+          {canCreate && (
+            <button className="qa-btn qa-btn-primary" onClick={onNewPredio}>Criar prédio</button>
+          )}
+        </div>
+      ) : (
+        <div className="predios-grid">
+          {predios.map((p) => {
+            const stats = p.stats || {};
+            const total = stats.total || 0;
+            const ocupPct = total > 0 ? Math.round(((total - (stats.disponivel || 0)) / total) * 100) : 0;
+            return (
+              <div key={p.id} className="lot-card-item" style={{ cursor: 'pointer' }} onClick={() => onOpenPredio(p.id)}>
+                <div className="lci-header">
+                  <div>
+                    <div className="lci-name">{p.nome}</div>
+                    {(p.cidade || p.bairro) && (
+                      <div className="lci-sub">{[p.bairro, p.cidade, p.estado].filter(Boolean).join(' · ')}</div>
+                    )}
+                  </div>
+                  <div className="lci-floors">{p.num_andares} andares</div>
+                </div>
+                <div className="lci-stats">
+                  {Object.entries(AP_STATUS_COLORS).map(([s, c]) => (
+                    <span key={s} style={{ color: c, fontSize: 12, fontWeight: 600 }}>
+                      {stats[s] ?? 0} {s}
+                    </span>
+                  ))}
+                </div>
+                <div className="lci-bar">
+                  <div className="lci-bar-fill" style={{ width: `${ocupPct}%`, background: p.cor || '#3288e0' }} />
+                </div>
+                <div className="lci-bar-label">{ocupPct}% ocupado · {total} aptos total</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 

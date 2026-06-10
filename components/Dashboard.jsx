@@ -6,10 +6,12 @@ import { STATUS_COLORS } from './MapView';
 
 export const Dashboard = ({
   loteamentos = [],
+  predios = [],
   loading = false,
   onOpenLoteamento,
   onOpenEditor,
   onRefresh,
+  onOpenPredios,
   canCreateLoteamento = false,
   canEditLoteamento = false,
   user = null,
@@ -162,9 +164,46 @@ export const Dashboard = ({
               sub="VGV realizado"
               color="red"
             />
+            {predios.length > 0 && (
+              <MetricCard
+                label="Prédios"
+                value={predios.length}
+                delta={predios.reduce((s, p) => s + (p.stats?.total || 0), 0) + ' aptos'}
+                sub="cadastrados no sistema"
+                color="blue"
+              />
+            )}
           </>
         )}
       </section>
+
+      {predios.length > 0 && (
+        <section className="dash-predios-summary">
+          <header className="sec-header">
+            <h2 className="sec-title">Prédios</h2>
+            <button className="sec-tool-btn" onClick={onOpenPredios}>
+              Ver todos
+            </button>
+          </header>
+          <div className="predios-mini-list">
+            {predios.slice(0, 3).map((p) => {
+              const stats = p.stats || {};
+              const total = stats.total || 0;
+              const ocupPct = total > 0 ? Math.round(((total - (stats.disponivel || 0)) / total) * 100) : 0;
+              return (
+                <button key={p.id} className="predio-mini-card" onClick={onOpenPredios}>
+                  <div className="pmc-name">{p.nome}</div>
+                  <div className="pmc-info">{p.num_andares} andares · {total} aptos</div>
+                  <div className="pmc-bar">
+                    <div className="pmc-bar-fill" style={{ width: `${ocupPct}%`, background: p.cor || '#3288e0' }} />
+                  </div>
+                  <div className="pmc-pct">{ocupPct}% ocupado</div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="dash-split">
         <section className="dash-loteamentos">

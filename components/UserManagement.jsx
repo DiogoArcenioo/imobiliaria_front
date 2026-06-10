@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { toggleUserAtivo } from "../lib/api";
 
 const ROLE_LABELS = {
   admin: "Administrador",
@@ -49,34 +50,52 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
-export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpdate, currentUser }) {
+export function UserManagement({
+  users = [],
+  loading,
+  onRefresh,
+  onCreate,
+  onUpdate,
+  currentUser,
+  planoInfo = null,   // { max_usuarios, nome } — vindo da empresa/plano
+  somenteLeitura = false,
+}) {
   const [query, setQuery] = useState("");
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [apiError, setApiError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [togglingId, setTogglingId] = useState(null);
+
+  const visibleUsers = useMemo(() => users.filter((u) => u.role !== "admin"), [users]);
+  const activeUsers  = useMemo(() => visibleUsers.filter((u) => u.ativo !== false), [visibleUsers]);
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((user) =>
+    if (!q) return visibleUsers;
+    return visibleUsers.filter((user) =>
       [user.nome, user.login, user.email, user.telefone, ROLE_LABELS[user.role]]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q))
     );
-  }, [query, users]);
+  }, [query, visibleUsers]);
 
   const counts = useMemo(() => {
-    return users.reduce(
+    return visibleUsers.reduce(
       (acc, user) => {
         acc.total += 1;
+        if (user.ativo !== false) acc.ativos += 1;
         acc[user.role] = (acc[user.role] || 0) + 1;
         return acc;
       },
-      { total: 0, admin: 0, gerente: 0, vendedor: 0 }
+      { total: 0, ativos: 0, gerente: 0, vendedor: 0 }
     );
-  }, [users]);
+  }, [visibleUsers]);
+
+  // Limite de plano atingido?
+  const limitePlanAtingido = planoInfo?.max_usuarios != null
+    && activeUsers.length >= planoInfo.max_usuarios;
 
   function setField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -182,6 +201,22 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
     }
   }
 
+  async function handleToggleAtivo(user) {
+    if (togglingId) return;
+    const novoAtivo = user.ativo === false ? true : false;
+    setTogglingId(user.id);
+    try {
+      await toggleUserAtivo(user.id, novoAtivo);
+      await onRefresh();
+    } catch (err) {
+      alert(err.message || "Erro ao alterar status do usuario");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  const canWrite = !somenteLeitura;
+
   return (
     <section className="list-page users-page">
       <header className="list-page-head users-head">
@@ -191,7 +226,7 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
           <p className="dash-sub">
             {loading
               ? "Carregando usuarios..."
-              : `${counts.total} usuarios vinculados a esta empresa.`}
+              : `${counts.total} usuarios vinculados · ${counts.ativos} ativos.`}
           </p>
         </div>
         <button className="sec-tool-btn" onClick={onRefresh} disabled={loading}>
@@ -202,11 +237,43 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
         </button>
       </header>
 
+      {/* Banner de somente leitura */}
+      {!canWrite && (
+        <div style={{
+          background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10,
+          padding: "12px 16px", marginBottom: "1rem",
+          display: "flex", alignItems: "center", gap: 10,
+          color: "#c2410c", fontSize: "0.875rem",
+        }}>
+          🔒 <strong>Modo somente leitura:</strong>&nbsp;Renove sua assinatura para cadastrar ou editar usuarios.
+        </div>
+      )}
+
+      {/* Aviso de limite de plano */}
+      {canWrite && limitePlanAtingido && (
+        <div style={{
+          background: "#fff0f0", border: "1px solid #fca5a5", borderRadius: 10,
+          padding: "12px 16px", marginBottom: "1rem",
+          display: "flex", alignItems: "center", gap: 10,
+          color: "#dc2626", fontSize: "0.875rem",
+        }}>
+          ⚠️ Limite de usuarios do plano <strong>{planoInfo?.nome}</strong> atingido&nbsp;
+          ({activeUsers.length}/{planoInfo.max_usuarios}). Desative usuarios inativos ou faça upgrade.
+        </div>
+      )}
+
       <section className="users-metrics">
         <UserMetric label="Total" value={counts.total} />
-        <UserMetric label="Administradores" value={counts.admin} />
+        <UserMetric label="Ativos" value={counts.ativos} />
         <UserMetric label="Gerentes" value={counts.gerente} />
         <UserMetric label="Vendedores" value={counts.vendedor} />
+        {planoInfo?.max_usuarios != null && (
+          <UserMetric
+            label="Limite plano"
+            value={`${activeUsers.length}/${planoInfo.max_usuarios}`}
+            warn={limitePlanAtingido}
+          />
+        )}
       </section>
 
       <div className="users-layout">
@@ -237,6 +304,7 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
               onChange={(event) => setField("nome", event.target.value)}
               placeholder="Joao da Silva"
               maxLength={200}
+              disabled={!canWrite}
             />
           </Field>
 
@@ -249,11 +317,16 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
                 }
                 placeholder="joaosilva"
                 maxLength={100}
+                disabled={!canWrite}
               />
             </Field>
 
             <Field label="Funcao">
-              <select value={form.role} onChange={(event) => setField("role", event.target.value)}>
+              <select
+                value={form.role}
+                onChange={(event) => setField("role", event.target.value)}
+                disabled={!canWrite}
+              >
                 <option value="vendedor">Vendedor</option>
                 <option value="gerente">Gerente</option>
                 {currentUser?.role === "admin" && (
@@ -270,6 +343,7 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
               onChange={(event) => setField("email", event.target.value)}
               placeholder="usuario@empresa.com.br"
               maxLength={255}
+              disabled={!canWrite}
             />
           </Field>
 
@@ -278,6 +352,7 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
               value={form.telefone}
               onChange={(event) => setField("telefone", maskPhone(event.target.value))}
               placeholder="(00) 00000-0000"
+              disabled={!canWrite}
             />
           </Field>
 
@@ -289,6 +364,7 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
                 onChange={(event) => setField("senha", event.target.value)}
                 placeholder={editingUser ? "Deixe em branco para nao alterar" : "Minimo 8 caracteres"}
                 maxLength={72}
+                disabled={!canWrite}
               />
             </Field>
 
@@ -299,13 +375,19 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
                 onChange={(event) => setField("confirmar", event.target.value)}
                 placeholder="Repita a senha"
                 maxLength={72}
+                disabled={!canWrite}
               />
             </Field>
           </div>
 
           {apiError && <div className="form-alert">{apiError}</div>}
 
-          <button className="qa-btn qa-btn-primary user-submit" type="submit" disabled={saving}>
+          <button
+            className="qa-btn qa-btn-primary user-submit"
+            type="submit"
+            disabled={saving || !canWrite || (!editingUser && limitePlanAtingido)}
+            title={!canWrite ? "Conta em modo somente leitura" : limitePlanAtingido ? "Limite de plano atingido" : ""}
+          >
             {saving
               ? editingUser ? "Salvando..." : "Cadastrando..."
               : editingUser ? "Salvar alteracoes" : "Cadastrar usuario"}
@@ -344,13 +426,18 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
                     <th>Login</th>
                     <th>Telefone</th>
                     <th>Funcao</th>
+                    <th>Status</th>
                     <th>Criado em</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
                   {filteredUsers.map((item) => (
-                    <tr key={item.id} className={editingUser?.id === item.id ? "users-row-editing" : ""}>
+                    <tr
+                      key={item.id}
+                      className={editingUser?.id === item.id ? "users-row-editing" : ""}
+                      style={{ opacity: item.ativo === false ? 0.55 : 1 }}
+                    >
                       <td>
                         <div className="user-cell">
                           <span className="user-avatar-sm">{initials(item)}</span>
@@ -366,17 +453,36 @@ export function UserManagement({ users = [], loading, onRefresh, onCreate, onUpd
                       </td>
                       <td>{formatPhone(item.telefone)}</td>
                       <td><RolePill role={item.role} /></td>
+                      <td>
+                        <AtivoTag ativo={item.ativo !== false} />
+                      </td>
                       <td>{formatDate(item.created_at)}</td>
                       <td>
                         <div className="table-actions">
-                          {(currentUser?.role === "admin" || item.role !== "admin") && (
-                            <button
-                              type="button"
-                              className="table-action table-action-ghost"
-                              onClick={() => editingUser?.id === item.id ? cancelEdit() : startEdit(item)}
-                            >
-                              {editingUser?.id === item.id ? "Cancelar" : "Editar"}
-                            </button>
+                          {canWrite && (currentUser?.role === "admin" || item.role !== "admin") && (
+                            <>
+                              <button
+                                type="button"
+                                className="table-action table-action-ghost"
+                                onClick={() => editingUser?.id === item.id ? cancelEdit() : startEdit(item)}
+                              >
+                                {editingUser?.id === item.id ? "Cancelar" : "Editar"}
+                              </button>
+                              {/* Não permite desativar a si mesmo */}
+                              {item.id !== currentUser?.id && (
+                                <button
+                                  type="button"
+                                  className="table-action table-action-ghost"
+                                  style={{ color: item.ativo === false ? "#15803d" : "#dc2626" }}
+                                  onClick={() => handleToggleAtivo(item)}
+                                  disabled={togglingId === item.id}
+                                >
+                                  {togglingId === item.id
+                                    ? "..."
+                                    : item.ativo === false ? "Ativar" : "Desativar"}
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
@@ -406,11 +512,26 @@ function RolePill({ role }) {
   return <span className={`role-pill role-${role || "vendedor"}`}>{ROLE_LABELS[role] || role}</span>;
 }
 
-function UserMetric({ label, value }) {
+function AtivoTag({ ativo }) {
   return (
-    <div className="user-metric">
-      <span>{label}</span>
-      <b>{value}</b>
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "2px 8px", borderRadius: 12, fontSize: "0.72rem", fontWeight: 600,
+      background: ativo ? "#f0fdf4" : "#f9fafb",
+      color: ativo ? "#15803d" : "#9ca3af",
+      border: `1px solid ${ativo ? "#86efac" : "#e5e7eb"}`,
+    }}>
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: ativo ? "#22c55e" : "#d1d5db" }} />
+      {ativo ? "Ativo" : "Inativo"}
+    </span>
+  );
+}
+
+function UserMetric({ label, value, warn = false }) {
+  return (
+    <div className="user-metric" style={warn ? { borderColor: "#fca5a5" } : {}}>
+      <span style={warn ? { color: "#dc2626" } : {}}>{label}</span>
+      <b style={warn ? { color: "#dc2626" } : {}}>{value}</b>
     </div>
   );
 }

@@ -3,13 +3,17 @@
 import { useMemo, useState } from "react";
 import { formatCpfCnpj } from "./ClienteManagement";
 import { UserManagement } from "./UserManagement";
+import { AssinaturaPanel } from "./AssinaturaPanel";
+import { PlanosAdmin } from "./PlanosAdmin";
 import { flattenLots } from "../lib/api";
 import { fmtBRL } from "../lib/data";
 
 const ADMIN_TABS = [
-  { id: "usuarios", label: "Usuarios" },
-  { id: "cancelamentos", label: "Cancelamentos" },
-  { id: "motivos", label: "Motivos" },
+  { id: "clientes",      label: "Clientes",      icon: "🏢" },
+  { id: "planos",        label: "Planos",         icon: "📦" },
+  { id: "usuarios",      label: "Usuários",       icon: "👥" },
+  { id: "cancelamentos", label: "Cancelamentos",  icon: "↩️" },
+  { id: "motivos",       label: "Motivos",        icon: "📋" },
 ];
 
 function formatDateTime(value) {
@@ -49,7 +53,7 @@ export function AdminPanel({
   onRefreshLogs,
   onCancelarVenda,
 }) {
-  const [tab, setTab] = useState("usuarios");
+  const [tab, setTab] = useState("clientes");
 
   if (user?.role !== "admin") {
     return (
@@ -59,13 +63,44 @@ export function AdminPanel({
     );
   }
 
+  // Métricas calculadas a partir das props disponíveis
+  const allLots = useMemo(() => flattenLots(loteamentos), [loteamentos]);
+  const metrics = useMemo(() => ({
+    usuarios:    users.length,
+    loteamentos: loteamentos.length,
+    lotes:       allLots.length,
+    vgv:         allLots.reduce((s, l) => s + (Number(l.preco) || 0), 0),
+    vendidos:    allLots.filter((l) => l.status === "vendido").length,
+  }), [users, loteamentos, allLots]);
+
   return (
     <section className="list-page admin-page">
-      <header className="list-page-head admin-head">
-        <div>
-          <div className="dash-eyebrow">ADMIN</div>
-          <h1 className="list-page-title">Painel administrativo</h1>
-          <p className="dash-sub">Controle de usuarios, cancelamentos e motivos padrao.</p>
+      <header className="list-page-head admin-head" style={{ marginBottom: "1rem" }}>
+        <div style={{ flex: 1 }}>
+          <div className="dash-eyebrow">SISTEMA · ADMIN</div>
+          <h1 className="list-page-title">Painel gerencial</h1>
+          <p className="dash-sub">Clientes, planos, usuários, cancelamentos e configurações do sistema.</p>
+        </div>
+
+        {/* Cards de métricas rápidas */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {[
+            { label: "Usuários",    value: metrics.usuarios,    icon: "👥" },
+            { label: "Loteamentos", value: metrics.loteamentos, icon: "🏘️" },
+            { label: "Lotes",       value: metrics.lotes,       icon: "📐" },
+            { label: "VGV Total",   value: fmtBRL(metrics.vgv), icon: "💰" },
+          ].map((m) => (
+            <div key={m.label} style={{
+              background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10,
+              padding: "8px 14px", minWidth: 90, textAlign: "center",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+            }}>
+              <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginBottom: 2 }}>
+                {m.icon} {m.label}
+              </div>
+              <div style={{ fontSize: "1rem", fontWeight: 700, color: "#0d1b3e" }}>{m.value}</div>
+            </div>
+          ))}
         </div>
       </header>
 
@@ -77,12 +112,16 @@ export function AdminPanel({
             className={"admin-tab" + (tab === item.id ? " admin-tab-active" : "")}
             onClick={() => setTab(item.id)}
           >
-            {item.label}
+            <span style={{ marginRight: 5 }}>{item.icon}</span>{item.label}
           </button>
         ))}
       </div>
 
       <div className="admin-content">
+        {tab === "clientes" && <AssinaturaPanel />}
+
+        {tab === "planos" && <PlanosAdmin />}
+
         {tab === "usuarios" && (
           <UserManagement
             users={users}
@@ -118,7 +157,6 @@ export function AdminPanel({
             onUpdate={onUpdateMotivo}
           />
         )}
-
       </div>
     </section>
   );
