@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building3DView } from './Building3DView';
 import { FloorPlanEditor } from './FloorPlanEditor';
 import { ApartmentCard } from './ApartmentCard';
 import { formatCpfCnpj } from './ClienteManagement';
+import { LocacaoDialog, LocacoesPanel } from './LocacoesPanel';
+import { createLocacao, encerrarLocacao, getLocacoes, getLocacoesResumo } from '../lib/api';
 
 function clientLabel(c) {
   if (!c) return '';
@@ -42,8 +44,8 @@ function ApStatusDialog({ ap, status, clientes, onConfirm, onCancel }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="modal-box" style={{ maxWidth: 480 }}>
+    <div className="modal-overlay ap-status-modal-overlay" onClick={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className="modal-box ap-status-modal" style={{ maxWidth: 480 }} role="dialog" aria-modal="true">
         <h3 className="modal-title">{STATUS_LABELS[status] || status} — Apt {ap?.ap_id}</h3>
         <div className="modal-body">
           <label className="field-label">
@@ -85,8 +87,10 @@ function ApStatusDialog({ ap, status, clientes, onConfirm, onCancel }) {
           )}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onCancel}>Cancelar</button>
-          <button className="btn btn-primary" disabled={!selected || saving} onClick={handleConfirm}>
+          <button className="ap-modal-btn ap-modal-btn-secondary" onClick={onCancel}>
+            Cancelar
+          </button>
+          <button className="ap-modal-btn ap-modal-btn-primary" disabled={!selected || saving} onClick={handleConfirm}>
             {saving ? 'Salvando...' : STATUS_LABELS[status] || 'Confirmar'}
           </button>
         </div>
@@ -104,18 +108,12 @@ const AP_STATUS_COLORS = {
 
 /**
  * PredioManagement
- * Tela principal de um prédio:
- * - Mostra o modelo 3D isométrico
- * - Ao clicar num andar → muda para visão de planta baixa daquele andar
- * - Ao clicar num apartamento → mostra o ApartmentCard
- * - Admins/gerentes podem editar planta baixa
- *
  * Props:
  *   predio          – objeto prédio completo com andares[]
  *   onBack          – voltar à lista de prédios
- *   onSaveFloorPlan(predioId, andarNum, shapes, aps) – salva planta baixa
+ *   onSaveFloorPlan(predioId, andarNum, shapes, aps, meta) – salva planta baixa
  *   onUpdateApStatus(apId, status, clienteId, obs) – atualiza status de ap
- *   clientes        – lista de clientes para SaleDialog
+ *   clientes        – lista de clientes
  *   user            – usuário logado
  *   onRefresh       – recarrega o prédio do servidor
  */
@@ -127,12 +125,19 @@ export function PredioManagement({
   clientes = [],
   user,
   onRefresh,
+  onStartEditingAndar,
+  onStopEditingAndar,
 }) {
-  const [selectedFloor, setSelectedFloor] = useState(null); // número do andar
+  const [selectedFloor, setSelectedFloor] = useState(null);
   const [editingFloor, setEditingFloor] = useState(false);
   const [selectedAp, setSelectedAp] = useState(null);
   const [apPos, setApPos] = useState(null);
-  const [statusDialog, setStatusDialog] = useState(null); // { ap, status }
+  const [statusDialog, setStatusDialog] = useState(null);
+  const [locacaoDialog, setLocacaoDialog] = useState(null);
+  const [section, setSection] = useState('predio');
+  const [locacoes, setLocacoes] = useState([]);
+  const [locacoesResumo, setLocacoesResumo] = useState({});
+  const [locacoesLoading, setLocacoesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   if (!predio) return null;
@@ -142,6 +147,25 @@ export function PredioManagement({
   const activeAndar = selectedFloor != null
     ? predio.andares?.find((a) => a.numero === selectedFloor)
     : null;
+
+  const loadLocacoes = useCallback(async () => {
+    if (!predio?.id) return;
+    setLocacoesLoading(true);
+    try {
+      const [list, summary] = await Promise.all([
+        getLocacoes({ predioId: predio.id }),
+        getLocacoesResumo(predio.id),
+      ]);
+      setLocacoes(list);
+      setLocacoesResumo(summary);
+    } finally {
+      setLocacoesLoading(false);
+    }
+  }, [predio?.id]);
+
+  useEffect(() => {
+    loadLocacoes().catch(() => {});
+  }, [loadLocacoes]);
 
   const handleFloorClick = (numero) => {
     setSelectedFloor(numero);
@@ -155,30 +179,38 @@ export function PredioManagement({
     setSelectedAp(null);
   };
 
-  const handleApClick = (ap, e) => {
-    if (e) {
-      const rect = e.currentTarget.closest('svg')?.getBoundingClientRect() ?? { left: 0, top: 0 };
-      const svgPt = e.currentTarget.getBoundingClientRect();
-      setApPos({
-        left: `${svgPt.left + svgPt.width / 2}px`,
-        top: `${svgPt.top - 10}px`,
-        transform: 'translate(-50%, -100%)',
-      });
-    } else {
-      setApPos(null);
-    }
+  const handleApClick = (ap, position) => {
     setSelectedAp(ap);
+    setApPos(position || null);
   };
 
   const handleStatusChange = async (nextStatus) => {
     if (!selectedAp) return;
-    if (nextStatus === 'disponivel') {
-      await onUpdateApStatus?.(selectedAp.id, nextStatus, null, null);
+    if (nextStatus === 'alugado') {
+      setLocacaoDialog(selectedAp);
       setSelectedAp(null);
+      setApPos(null);
+      return;
+    }
+    if (nextStatus === 'disponivel') {
+      const activeRental = locacoes.find((item) =>
+        item.status === 'ativa' && item.apartamento_id === selectedAp.id
+      );
+      if (activeRental) {
+        if (!window.confirm(`Encerrar a locação do apartamento ${selectedAp.ap_id}?`)) return;
+        await encerrarLocacao(activeRental.id, 'Encerrada pelo cadastro do apartamento');
+        await loadLocacoes();
+      } else {
+        await onUpdateApStatus?.(selectedAp.id, nextStatus, null, null);
+      }
+      setSelectedAp(null);
+      setApPos(null);
       onRefresh?.();
       return;
     }
     setStatusDialog({ ap: selectedAp, status: nextStatus });
+    setSelectedAp(null);
+    setApPos(null);
   };
 
   const handleStatusDialogConfirm = async ({ clienteId, observacao }) => {
@@ -194,21 +226,56 @@ export function PredioManagement({
     }
   };
 
-  const handleSaveFloor = async (shapes, aps) => {
+  const handleCreateLocacao = async (data) => {
+    if (!locacaoDialog) return;
+    await createLocacao(locacaoDialog.id, data);
+    setLocacaoDialog(null);
+    await Promise.all([loadLocacoes(), onRefresh?.()]);
+  };
+
+  const handleEndLocacao = async (locacao) => {
+    if (!window.confirm(`Encerrar a locação do apartamento ${locacao.apartamento_codigo}?`)) return;
+    try {
+      await encerrarLocacao(locacao.id, 'Encerrada pelo painel de locações');
+      await Promise.all([loadLocacoes(), onRefresh?.()]);
+    } catch (err) {
+      window.alert(err.message || 'Não foi possível encerrar a locação.');
+    }
+  };
+
+  const handleSaveFloor = async (shapes, aps, meta) => {
     if (!activeAndar) return;
-    await onSaveFloorPlan?.(predio.id, activeAndar.numero, shapes, aps);
+    await onSaveFloorPlan?.(predio.id, activeAndar.numero, shapes, aps, meta);
     onRefresh?.();
   };
 
-  // Estatísticas gerais do prédio
+  const handleSelectAndarInEditor = (numero) => {
+    setSelectedFloor(numero);
+  };
+
   const stats = predio.stats || {};
+
+  // Full-screen editor mode
+  if (editingFloor) {
+    return (
+      <FloorPlanEditor
+        andar={activeAndar}
+        predio={predio}
+        onSave={handleSaveFloor}
+        onClose={() => { setEditingFloor(false); onStopEditingAndar?.(); }}
+        allAndares={predio.andares}
+        onSelectAndar={handleSelectAndarInEditor}
+      />
+    );
+  }
 
   return (
     <div className="predio-mgmt">
       {/* Header */}
       <div className="predio-header">
-        <button className="btn btn-ghost btn-sm" onClick={onBack}>
-          ← Prédios
+        <button className="tb-back" onClick={onBack}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 3l-5 5 5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Prédios
         </button>
         <div className="predio-title-wrap">
           <h2 className="predio-title">{predio.nome}</h2>
@@ -225,11 +292,28 @@ export function PredioManagement({
             </span>
           ))}
         </div>
+        <div className="predio-section-tabs">
+          <button className={section === 'predio' ? 'active' : ''} onClick={() => setSection('predio')}>
+            Visão do prédio
+          </button>
+          <button className={section === 'locacoes' ? 'active' : ''} onClick={() => setSection('locacoes')}>
+            Locações
+            {locacoesResumo.total_ativas > 0 && <span>{locacoesResumo.total_ativas}</span>}
+          </button>
+        </div>
       </div>
 
-      {/* Conteúdo principal */}
-      {!selectedFloor ? (
-        /* Visão 3D */
+      {/* Main content */}
+      {section === 'locacoes' ? (
+        <LocacoesPanel
+          locacoes={locacoes}
+          resumo={locacoesResumo}
+          loading={locacoesLoading}
+          user={user}
+          onEnd={handleEndLocacao}
+        />
+      ) : !selectedFloor ? (
+        /* 3D view */
         <div className="predio-3d-view">
           <div className="p3d-hint">Clique em um andar para ver a planta baixa</div>
           <Building3DView
@@ -238,20 +322,13 @@ export function PredioManagement({
             selectedFloor={selectedFloor}
           />
         </div>
-      ) : editingFloor ? (
-        /* Editor de planta baixa */
-        <FloorPlanEditor
-          andar={activeAndar}
-          predio={predio}
-          onSave={handleSaveFloor}
-          onClose={() => setEditingFloor(false)}
-        />
       ) : (
-        /* Visão planta baixa — prédio "visto de cima" */
+        /* Floor plan view */
         <div className="floor-plan-view">
           <div className="fpv-toolbar">
-            <button className="btn btn-ghost btn-sm" onClick={handleBack3D}>
-              ← Visão 3D
+            <button className="tb-back" onClick={handleBack3D}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 3l-5 5 5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Visão 3D
             </button>
             <div className="fpv-floor-nav">
               {predio.andares?.map((a) => (
@@ -265,33 +342,47 @@ export function PredioManagement({
               ))}
             </div>
             {canEdit && (
-              <button className="btn btn-sm" style={{ background: '#3288e0', color: '#fff' }} onClick={() => setEditingFloor(true)}>
+              <button
+                className="btn btn-sm"
+                style={{ background: '#3288e0', color: '#fff' }}
+                onClick={() => { setEditingFloor(true); onStartEditingAndar?.(); }}
+              >
                 Editar Planta
               </button>
             )}
           </div>
 
-          {/* Planta baixa com apartamentos */}
+          {/* Legend */}
+          <div className="fpv-legend">
+            {Object.entries(AP_STATUS_COLORS).map(([s, info]) => (
+              <span key={s} className="fpv-leg-item">
+                <span className="fpv-leg-dot" style={{ background: info.bg }} />
+                {info.label}
+              </span>
+            ))}
+          </div>
+
+          {/* Floor plan canvas */}
           {activeAndar ? (
             <FloorPlanEditor
               andar={activeAndar}
               predio={predio}
               readOnly
               onClose={handleBack3D}
-              onSelectAp={(ap) => setSelectedAp(ap)}
+              onSelectAp={handleApClick}
             />
           ) : (
             <div className="fpv-empty">
               <p>Nenhuma planta baixa cadastrada para este andar.</p>
               {canEdit && (
-                <button className="btn btn-primary" onClick={() => setEditingFloor(true)}>
+                <button className="btn btn-primary" onClick={() => { setEditingFloor(true); onStartEditingAndar?.(); }}>
                   Criar Planta Baixa
                 </button>
               )}
             </div>
           )}
 
-          {/* Card do apartamento selecionado */}
+          {/* Apartment detail card */}
           {selectedAp && (
             <ApartmentCard
               ap={selectedAp}
@@ -306,7 +397,7 @@ export function PredioManagement({
         </div>
       )}
 
-      {/* Diálogo de reserva/venda/aluguel */}
+      {/* Status dialog */}
       {statusDialog && (
         <ApStatusDialog
           ap={statusDialog.ap}
@@ -314,6 +405,14 @@ export function PredioManagement({
           clientes={clientes}
           onConfirm={handleStatusDialogConfirm}
           onCancel={() => setStatusDialog(null)}
+        />
+      )}
+      {locacaoDialog && (
+        <LocacaoDialog
+          apartamento={locacaoDialog}
+          clientes={clientes}
+          onConfirm={handleCreateLocacao}
+          onCancel={() => setLocacaoDialog(null)}
         />
       )}
     </div>

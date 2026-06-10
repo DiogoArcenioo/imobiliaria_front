@@ -7,6 +7,7 @@ import { STATUS_COLORS } from './MapView';
 export const Dashboard = ({
   loteamentos = [],
   predios = [],
+  locacoesResumo = {},
   loading = false,
   onOpenLoteamento,
   onOpenEditor,
@@ -173,6 +174,20 @@ export const Dashboard = ({
                 color="blue"
               />
             )}
+            <MetricCard
+              label="Receita de aluguéis"
+              value={fmtBRLShort(locacoesResumo.receita_mensal || 0)}
+              delta={`${locacoesResumo.total_ativas || 0} contratos`}
+              sub="receita mensal contratada"
+              color="emerald"
+            />
+            <MetricCard
+              label="Ocupação de locações"
+              value={`${locacoesResumo.ocupacao_percentual || 0}%`}
+              delta={`${locacoesResumo.unidades_vagas || 0} vagas`}
+              sub="apartamentos disponíveis para locação"
+              color="blue"
+            />
           </>
         )}
       </section>

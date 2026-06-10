@@ -1,56 +1,86 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fmtBRL } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 
 const AP_STATUS_COLORS = {
-  disponivel: { bg: '#22c55e', label: 'Disponível' },
-  reservado:  { bg: '#f59e0b', label: 'Reservado' },
-  vendido:    { bg: '#ef4444', label: 'Vendido' },
-  alugado:    { bg: '#8b5cf6', label: 'Alugado' },
+  disponivel: { bg: '#22c55e', soft: 'rgba(34,197,94,.12)', label: 'Disponível' },
+  reservado:  { bg: '#f59e0b', soft: 'rgba(245,158,11,.12)', label: 'Reservado' },
+  vendido:    { bg: '#ef4444', soft: 'rgba(239,68,68,.12)', label: 'Vendido' },
+  alugado:    { bg: '#8b5cf6', soft: 'rgba(139,92,246,.12)', label: 'Alugado' },
 };
 
 const TIPO_LABELS = {
-  venda:   'Venda',
+  venda: 'Venda',
   aluguel: 'Aluguel',
-  ambos:   'Venda / Aluguel',
+  ambos: 'Venda e aluguel',
 };
 
-export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, user }) {
-  if (!ap) return null;
+function Metric({ label, value, suffix }) {
+  return (
+    <div className="apc-metric">
+      <span>{label}</span>
+      <strong>{value ?? '—'}{value != null && suffix ? ` ${suffix}` : ''}</strong>
+    </div>
+  );
+}
 
+export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, user }) {
   const [actionLoading, setActionLoading] = useState(false);
   const cardRef = useRef(null);
-  const cardStyle = position
-    ? { left: position.left, top: position.top, transform: position.transform }
-    : {};
-  const [adjustedStyle, setAdjustedStyle] = useState(cardStyle);
+  const initialStyle = position
+    ? { left: position.left, top: position.top, transform: position.transform || 'none' }
+    : { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' };
+  const [adjustedStyle, setAdjustedStyle] = useState(initialStyle);
 
   useLayoutEffect(() => {
-    if (!cardRef.current || !position) {
-      setAdjustedStyle(cardStyle);
+    if (!cardRef.current) return;
+    if (!position) {
+      setAdjustedStyle({ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' });
       return;
     }
-    const rect = cardRef.current.getBoundingClientRect();
-    const margin = 12;
-    let top = parseFloat(position.top);
-    let left = parseFloat(position.left);
-    const overflowB = rect.bottom - (window.innerHeight - margin);
-    if (overflowB > 0) top -= overflowB;
-    const adjTop = rect.top - Math.max(0, overflowB);
-    if (adjTop < margin) top += margin - adjTop;
-    const overflowR = rect.right - (window.innerWidth - margin);
-    if (overflowR > 0) left -= overflowR;
-    const adjLeft = rect.left - Math.max(0, overflowR);
-    if (adjLeft < margin) left += margin - adjLeft;
-    setAdjustedStyle({ left: `${left}px`, top: `${top}px`, transform: 'none' });
+
+    const target = {
+      left: Number.parseFloat(position.left),
+      top: Number.parseFloat(position.top),
+    };
+    setAdjustedStyle({ left: `${target.left}px`, top: `${target.top}px`, transform: 'none' });
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!cardRef.current) return;
+      const rect = cardRef.current.getBoundingClientRect();
+      const margin = 16;
+      const left = Math.min(
+        Math.max(margin, target.left),
+        Math.max(margin, window.innerWidth - rect.width - margin),
+      );
+      const top = Math.min(
+        Math.max(margin, target.top),
+        Math.max(margin, window.innerHeight - rect.height - margin),
+      );
+      setAdjustedStyle({ left: `${left}px`, top: `${top}px`, transform: 'none' });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [position]);
 
-  const stInfo = AP_STATUS_COLORS[ap.status] || AP_STATUS_COLORS.disponivel;
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  if (!ap) return null;
+
+  const status = AP_STATUS_COLORS[ap.status] || AP_STATUS_COLORS.disponivel;
   const isLocked = ap.status === 'vendido' || ap.status === 'alugado';
   const canManage = user && ['admin', 'gerente'].includes(user.role);
   const canReserve = user && ['admin', 'gerente', 'vendedor'].includes(user.role);
+  const hasSalePrice = Number(ap.preco_venda) > 0 && ['venda', 'ambos'].includes(ap.tipo || 'venda');
+  const hasRentPrice = Number(ap.preco_aluguel) > 0 && ['aluguel', 'ambos'].includes(ap.tipo);
 
   const handleAction = async (nextStatus) => {
     if (!onStatusChange) return;
@@ -62,171 +92,113 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
     }
   };
 
-  const photoBg =
-    ap.status === 'vendido'
-      ? 'linear-gradient(135deg, #3a2a2a 0%, #5a3838 100%)'
-      : ap.status === 'alugado'
-      ? 'linear-gradient(135deg, #2a2a3a 0%, #383858 100%)'
-      : 'linear-gradient(135deg, #1f2c3a 0%, #2d445a 100%)';
-
   return (
-    <div
-      ref={cardRef}
-      className="lot-card"
-      style={position ? { position: 'fixed', ...adjustedStyle } : {}}
-    >
-      {/* Faixa de status colorida */}
-      <div className="lc-photo" style={{ background: photoBg, position: 'relative' }}>
-        <button className="lc-close" onClick={onClose}>✕</button>
-        <div style={{ position: 'absolute', bottom: 10, left: 12 }}>
-          <span
-            className="lc-badge"
-            style={{ background: stInfo.bg, color: '#fff', padding: '3px 10px', borderRadius: 12, fontSize: 12, fontWeight: 700 }}
-          >
-            {stInfo.label}
-          </span>
-        </div>
-        <div style={{ position: 'absolute', bottom: 10, right: 12, color: '#fff', fontSize: 13 }}>
-          {TIPO_LABELS[ap.tipo] || '—'}
-        </div>
-      </div>
+    <div className="apc-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose?.()}>
+      <article
+        ref={cardRef}
+        className="apartment-popover"
+        style={{ ...adjustedStyle, '--ap-status': status.bg, '--ap-status-soft': status.soft }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Apartamento ${ap.ap_id}`}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="apc-accent" />
+        <header className="apc-head">
+          <div>
+            <div className="apc-eyebrow">APARTAMENTO</div>
+            <h3>{ap.ap_id}</h3>
+            <p>
+              {andar ? `${andar.numero}º andar` : 'Andar'}
+              {predio?.nome ? ` · ${predio.nome}` : ''}
+            </p>
+          </div>
+          <button className="apc-close" onClick={onClose} aria-label="Fechar">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </header>
 
-      {/* Cabeçalho */}
-      <div className="lc-header">
-        <div className="lc-id">Apt {ap.ap_id}</div>
-        <div className="lc-sub">
-          {andar ? `${andar.numero}° Andar` : ''}
-          {predio ? ` · ${predio.nome}` : ''}
-        </div>
-      </div>
-
-      {/* Dados principais */}
-      <div className="lc-body">
-        <div className="lc-grid">
-          {ap.area > 0 && (
-            <div className="lc-item">
-              <div className="lci-label">Área</div>
-              <div className="lci-val">{ap.area} m²</div>
-            </div>
-          )}
-          {ap.quartos > 0 && (
-            <div className="lc-item">
-              <div className="lci-label">Quartos</div>
-              <div className="lci-val">{ap.quartos}</div>
-            </div>
-          )}
-          {ap.banheiros > 0 && (
-            <div className="lc-item">
-              <div className="lci-label">Banheiros</div>
-              <div className="lci-val">{ap.banheiros}</div>
-            </div>
-          )}
-          {ap.preco_venda > 0 && (ap.tipo === 'venda' || ap.tipo === 'ambos') && (
-            <div className="lc-item">
-              <div className="lci-label">Venda</div>
-              <div className="lci-val">{fmtBRL(ap.preco_venda)}</div>
-            </div>
-          )}
-          {ap.preco_aluguel > 0 && (ap.tipo === 'aluguel' || ap.tipo === 'ambos') && (
-            <div className="lc-item">
-              <div className="lci-label">Aluguel/mês</div>
-              <div className="lci-val">{fmtBRL(ap.preco_aluguel)}</div>
-            </div>
-          )}
+        <div className="apc-status-row">
+          <span className="apc-status"><i />{status.label}</span>
+          <span className="apc-type">{TIPO_LABELS[ap.tipo] || 'Venda'}</span>
         </div>
 
-        {/* Cliente vinculado */}
+        {(hasSalePrice || hasRentPrice) && (
+          <div className="apc-prices">
+            {hasSalePrice && (
+              <div>
+                <span>Valor de venda</span>
+                <strong>{fmtBRL(ap.preco_venda)}</strong>
+              </div>
+            )}
+            {hasRentPrice && (
+              <div>
+                <span>Aluguel mensal</span>
+                <strong>{fmtBRL(ap.preco_aluguel)}</strong>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="apc-metrics">
+          <Metric label="Área" value={ap.area > 0 ? ap.area : null} suffix="m²" />
+          <Metric label="Quartos" value={ap.quartos ?? null} />
+          <Metric label="Banheiros" value={ap.banheiros ?? null} />
+        </div>
+
         {ap.cliente && (
-          <div className="lc-cliente">
-            <div className="lcc-name">{ap.cliente.nome}</div>
-            {ap.cliente.cpf_cnpj && (
-              <div className="lcc-doc">{formatCpfCnpj(ap.cliente.cpf_cnpj)}</div>
-            )}
-          </div>
+          <section className="apc-client">
+            <div className="apc-section-label">CLIENTE VINCULADO</div>
+            <strong>{ap.cliente.nome}</strong>
+            <div>
+              {ap.cliente.cpf_cnpj && <span>{formatCpfCnpj(ap.cliente.cpf_cnpj)}</span>}
+              {ap.cliente.telefone && <span>{formatPhone(ap.cliente.telefone)}</span>}
+            </div>
+          </section>
         )}
 
-        {/* Observação de reserva (admin/gerente) */}
         {ap.observacao_reserva && (
-          <div className="lc-obs">
-            <span className="lco-label">Obs: </span>
-            {ap.observacao_reserva}
-          </div>
+          <section className="apc-note">
+            <div className="apc-section-label">OBSERVAÇÃO</div>
+            <p>{ap.observacao_reserva}</p>
+          </section>
         )}
-      </div>
 
-      {/* Ações */}
-      <div className="lc-footer">
-        {!isLocked && ap.status === 'disponivel' && canReserve && (
-          <button
-            className="btn btn-sm"
-            style={{ background: '#f59e0b', color: '#fff' }}
-            disabled={actionLoading}
-            onClick={() => handleAction('reservado')}
-          >
-            Reservar
-          </button>
-        )}
-        {!isLocked && ap.status === 'disponivel' && canManage && (ap.tipo === 'venda' || ap.tipo === 'ambos') && (
-          <button
-            className="btn btn-sm"
-            style={{ background: '#ef4444', color: '#fff' }}
-            disabled={actionLoading}
-            onClick={() => handleAction('vendido')}
-          >
-            Vender
-          </button>
-        )}
-        {!isLocked && ap.status === 'disponivel' && canManage && (ap.tipo === 'aluguel' || ap.tipo === 'ambos') && (
-          <button
-            className="btn btn-sm"
-            style={{ background: '#8b5cf6', color: '#fff' }}
-            disabled={actionLoading}
-            onClick={() => handleAction('alugado')}
-          >
-            Alugar
-          </button>
-        )}
-        {ap.status === 'reservado' && canReserve && (
-          <>
-            {canManage && (ap.tipo === 'venda' || ap.tipo === 'ambos') && (
-              <button
-                className="btn btn-sm"
-                style={{ background: '#ef4444', color: '#fff' }}
-                disabled={actionLoading}
-                onClick={() => handleAction('vendido')}
-              >
-                Vender
-              </button>
-            )}
-            {canManage && (ap.tipo === 'aluguel' || ap.tipo === 'ambos') && (
-              <button
-                className="btn btn-sm"
-                style={{ background: '#8b5cf6', color: '#fff' }}
-                disabled={actionLoading}
-                onClick={() => handleAction('alugado')}
-              >
-                Alugar
-              </button>
-            )}
-            <button
-              className="btn btn-sm btn-ghost"
-              disabled={actionLoading}
-              onClick={() => handleAction('disponivel')}
-            >
+        <footer className="apc-actions">
+          {!isLocked && ap.status === 'disponivel' && canReserve && (
+            <button className="apc-btn apc-btn-reserve" disabled={actionLoading} onClick={() => handleAction('reservado')}>
+              Reservar
+            </button>
+          )}
+          {!isLocked && ap.status === 'disponivel' && canManage && ['venda', 'ambos'].includes(ap.tipo || 'venda') && (
+            <button className="apc-btn apc-btn-sell" disabled={actionLoading} onClick={() => handleAction('vendido')}>
+              Vender
+            </button>
+          )}
+          {!isLocked && ap.status === 'disponivel' && canManage && (
+            <button className="apc-btn apc-btn-rent" disabled={actionLoading} onClick={() => handleAction('alugado')}>
+              Alugar
+            </button>
+          )}
+          {ap.status === 'reservado' && canManage && ['venda', 'ambos'].includes(ap.tipo || 'venda') && (
+            <button className="apc-btn apc-btn-sell" disabled={actionLoading} onClick={() => handleAction('vendido')}>
+              Concluir venda
+            </button>
+          )}
+          {ap.status === 'reservado' && canManage && ['aluguel', 'ambos'].includes(ap.tipo) && (
+            <button className="apc-btn apc-btn-rent" disabled={actionLoading} onClick={() => handleAction('alugado')}>
+              Concluir aluguel
+            </button>
+          )}
+          {(ap.status === 'reservado' ? canReserve : isLocked && canManage) && (
+            <button className="apc-btn apc-btn-ghost" disabled={actionLoading} onClick={() => handleAction('disponivel')}>
               Liberar
             </button>
-          </>
-        )}
-        {isLocked && canManage && (
-          <button
-            className="btn btn-sm btn-ghost"
-            disabled={actionLoading}
-            onClick={() => handleAction('disponivel')}
-          >
-            Liberar
-          </button>
-        )}
-      </div>
+          )}
+        </footer>
+      </article>
     </div>
   );
 }

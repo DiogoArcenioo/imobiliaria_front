@@ -14,6 +14,7 @@ import { AdminPanel } from "./AdminPanel";
 import { UserManagement } from "./UserManagement";
 import { PredioManagement } from "./PredioManagement";
 import { PredioWizard } from "./PredioWizard";
+import { LocacoesPanel } from "./LocacoesPanel";
 import {
   TweakColor,
   TweakRadio,
@@ -50,6 +51,9 @@ import {
   createPredio,
   saveFloorPlan,
   updateApartamentoStatus,
+  getLocacoes,
+  getLocacoesResumo,
+  encerrarLocacao,
 } from "../lib/api";
 import { fmtBRL, fmtBRLShort, statusLabel } from "../lib/data";
 import { useAuth } from "../context/AuthContext";
@@ -99,6 +103,10 @@ export default function ImobiliariaApp() {
   const [prediosLoading, setPrediosLoading] = useState(false);
   const [activePredioId, setActivePredioId] = useState(null);
   const [showPredioWizard, setShowPredioWizard] = useState(false);
+  const [editingAndar, setEditingAndar] = useState(false);
+  const [locacoes, setLocacoes] = useState([]);
+  const [locacoesResumo, setLocacoesResumo] = useState({});
+  const [locacoesLoading, setLocacoesLoading] = useState(false);
 
   // Estados para seleção de empresa pelo admin
   const [empresas, setEmpresas] = useState([]);
@@ -237,6 +245,21 @@ export default function ImobiliariaApp() {
     }
   }, []);
 
+  const fetchLocacoes = useCallback(async () => {
+    setLocacoesLoading(true);
+    try {
+      const [list, summary] = await Promise.all([getLocacoes(), getLocacoesResumo()]);
+      setLocacoes(list);
+      setLocacoesResumo(summary);
+      return list;
+    } catch (err) {
+      showToast("Erro ao carregar locações: " + err.message, "error");
+      return [];
+    } finally {
+      setLocacoesLoading(false);
+    }
+  }, []);
+
   // Admins só carregam esses dados depois de selecionar uma empresa.
   // Sem empresa, o backend retorna 403 (withTenantContext exige empresa_id).
   useEffect(() => {
@@ -283,6 +306,8 @@ export default function ImobiliariaApp() {
     // Limpa TODOS os dados da empresa anterior
     setLoteamentos([]);
     setPredios([]);
+    setLocacoes([]);
+    setLocacoesResumo({});
     setUsuarios([]);
     setTiposCancelamento([]);
     setMotivosCancelamento([]);
@@ -317,6 +342,10 @@ export default function ImobiliariaApp() {
     if (user?.role !== 'admin' || selectedEmpresa) fetchPredios();
   }, [fetchPredios, user?.role, selectedEmpresa]);
 
+  useEffect(() => {
+    if (user?.role !== 'admin' || selectedEmpresa) fetchLocacoes();
+  }, [fetchLocacoes, user?.role, selectedEmpresa]);
+
   const refreshPredio = useCallback(async (id) => {
     try {
       const updated = await getPredio(id);
@@ -348,9 +377,9 @@ export default function ImobiliariaApp() {
     }
   };
 
-  const onSaveFloorPlan = async (predioId, andarNumero, shapes, aps) => {
+  const onSaveFloorPlan = async (predioId, andarNumero, shapes, aps, meta) => {
     try {
-      await saveFloorPlan(predioId, andarNumero, shapes, aps);
+      await saveFloorPlan(predioId, andarNumero, shapes, aps, meta);
       await refreshPredio(predioId);
       showToast("Planta baixa salva com sucesso");
     } catch (err) {
@@ -364,6 +393,17 @@ export default function ImobiliariaApp() {
       if (activePredioId) await refreshPredio(activePredioId);
     } catch (err) {
       showToast("Erro: " + err.message, "error");
+    }
+  };
+
+  const onEndLocacao = async (locacao) => {
+    if (!window.confirm(`Encerrar a locação do apartamento ${locacao.apartamento_codigo}?`)) return;
+    try {
+      await encerrarLocacao(locacao.id, "Encerrada pelo painel geral de locações");
+      await Promise.all([fetchLocacoes(), fetchPredios()]);
+      showToast("Locação encerrada com sucesso");
+    } catch (err) {
+      showToast("Erro ao encerrar locação: " + err.message, "error");
     }
   };
 
@@ -716,7 +756,7 @@ export default function ImobiliariaApp() {
       className={
         "app" +
         (t.compactSidebar ? " app-compact" : "") +
-        (view === "editor" ? " app-editor" : "")
+        (view === "editor" || editingAndar ? " app-editor" : "")
       }
     >
       <Sidebar
@@ -729,6 +769,7 @@ export default function ImobiliariaApp() {
           clientes: clientes.length,
           usuarios: usuarios.length,
           predios: predios.length,
+          locacoes: locacoesResumo.total_ativas || 0,
         }}
         user={user}
         onLogout={() => { localStorage.removeItem('admin_empresa_id'); logout(); router.replace('/'); }}
@@ -738,7 +779,7 @@ export default function ImobiliariaApp() {
         onSelectEmpresa={onSelectEmpresa}
       />
       <main className="main">
-        {view !== "editor" && (
+        {view !== "editor" && !editingAndar && (
           <Header
             view={view}
             loteamentoNome={loteamento?.nome}
@@ -774,6 +815,7 @@ export default function ImobiliariaApp() {
             <Dashboard
               loteamentos={loteamentos}
               predios={predios}
+              locacoesResumo={locacoesResumo}
               loading={loading}
               onOpenLoteamento={onOpenLoteamento}
               onOpenEditor={onOpenEditor}
@@ -927,15 +969,36 @@ export default function ImobiliariaApp() {
             />
           )}
 
+          {view === "locacoes" && (
+            <div className="list-page rentals-list-page">
+              <header className="list-page-head">
+                <div>
+                  <div className="dash-eyebrow">GESTÃO DE CONTRATOS</div>
+                  <h1 className="list-page-title">Locações</h1>
+                  <p className="dash-sub">Acompanhe contratos ativos, receita mensal e histórico de aluguéis.</p>
+                </div>
+              </header>
+              <LocacoesPanel
+                locacoes={locacoes}
+                resumo={locacoesResumo}
+                loading={locacoesLoading}
+                user={user}
+                onEnd={onEndLocacao}
+              />
+            </div>
+          )}
+
           {view === "predio" && activePredioId && (
             <PredioManagement
               predio={predios.find((p) => p.id === activePredioId) || null}
-              onBack={() => setView("predios")}
+              onBack={() => { setView("predios"); setEditingAndar(false); }}
               onSaveFloorPlan={onSaveFloorPlan}
               onUpdateApStatus={onUpdateApStatus}
               clientes={clientes}
               user={user}
-              onRefresh={() => refreshPredio(activePredioId)}
+              onRefresh={() => Promise.all([refreshPredio(activePredioId), fetchLocacoes()])}
+              onStartEditingAndar={() => setEditingAndar(true)}
+              onStopEditingAndar={() => setEditingAndar(false)}
             />
           )}
 
@@ -950,6 +1013,7 @@ export default function ImobiliariaApp() {
             view !== "editor" &&
             view !== "predios" &&
             view !== "predio" &&
+            view !== "locacoes" &&
             view !== "usuarios" && <EmptyState view={view} />}
         </div>
       </main>
