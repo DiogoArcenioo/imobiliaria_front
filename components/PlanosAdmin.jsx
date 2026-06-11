@@ -253,6 +253,27 @@ export function PlanosAdmin() {
     try {
       const data = await getAdminPlanos();
       setPlanos(data);
+      if (data.length > 0) {
+        const plano = data[0];
+        setEditingId(plano.id);
+        setSlugManual(true);
+        setForm({
+          nome: plano.nome,
+          slug: plano.slug ?? "",
+          descricao: plano.descricao ?? "",
+          preco_mensal: String(plano.preco_mensal ?? ""),
+          preco_anual: String(plano.preco_anual ?? ""),
+          duracao_dias: String(plano.duracao_dias ?? 30),
+          duracao_trial_dias: String(plano.duracao_trial_dias ?? 7),
+          max_usuarios: plano.max_usuarios != null ? String(plano.max_usuarios) : "",
+          max_loteamentos: plano.max_loteamentos != null ? String(plano.max_loteamentos) : "",
+          destaque: plano.destaque ?? false,
+          ordem: String(plano.ordem ?? 0),
+          cor: plano.cor ?? "#3288e0",
+          recursos: plano.recursos ?? [],
+          ativo: plano.ativo ?? true,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -266,14 +287,6 @@ export function PlanosAdmin() {
       setForm((prev) => ({ ...prev, slug: slugify(prev.nome) }));
     }
   }, [form.nome, slugManual, editingId]);
-
-  function resetForm() {
-    setForm(EMPTY_FORM);
-    setEditingId(null);
-    setSlugManual(false);
-    setError("");
-    setSuccess("");
-  }
 
   function loadPlanoForEdit(plano) {
     setEditingId(plano.id);
@@ -327,7 +340,6 @@ export function PlanosAdmin() {
       } else {
         await criarPlano(payload);
         setSuccess("Plano criado com sucesso!");
-        resetForm();
       }
       await carregarPlanos();
     } catch (err) {
@@ -370,11 +382,6 @@ export function PlanosAdmin() {
             </svg>
             Atualizar
           </button>
-          {editingId && (
-            <button className="sec-tool-btn" onClick={resetForm}>
-              + Novo plano
-            </button>
-          )}
         </div>
       </header>
 
@@ -387,7 +394,7 @@ export function PlanosAdmin() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
             <div>
               <h2 style={{ margin: 0, fontSize: "0.9375rem", fontWeight: 700, color: "#0d1b3e" }}>
-                {editingId ? "✏️ Editar plano" : "➕ Novo plano"}
+                {editingId ? "Editar plano" : "Configurar plano"}
               </h2>
               {editingId && (
                 <p style={{ margin: "2px 0 0", fontSize: "0.75rem", color: "#9ca3af" }}>
@@ -395,9 +402,6 @@ export function PlanosAdmin() {
                 </p>
               )}
             </div>
-            {editingId && (
-              <button type="button" onClick={resetForm} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 18 }}>✕</button>
-            )}
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -499,12 +503,7 @@ export function PlanosAdmin() {
             )}
 
             <div style={{ display: "flex", gap: 10 }}>
-              {editingId && (
-                <button type="button" onClick={resetForm} style={{ ...btnSecStyle, flex: 1 }}>
-                  Cancelar
-                </button>
-              )}
-              <button type="submit" disabled={saving} style={{ ...btnPrimStyle, flex: 2, opacity: saving ? 0.7 : 1 }}>
+              <button type="submit" disabled={saving} style={{ ...btnPrimStyle, flex: 1, opacity: saving ? 0.7 : 1 }}>
                 {saving ? "Salvando..." : editingId ? "Atualizar plano" : "Criar plano"}
               </button>
             </div>
@@ -570,17 +569,6 @@ const btnPrimStyle = {
   background: "#3288e0",
   color: "#fff",
   border: "none",
-  borderRadius: 7,
-  fontWeight: 600,
-  cursor: "pointer",
-  fontSize: "0.875rem",
-};
-
-const btnSecStyle = {
-  padding: "9px 16px",
-  background: "#fff",
-  color: "#374151",
-  border: "1px solid #e5e7eb",
   borderRadius: 7,
   fontWeight: 600,
   cursor: "pointer",

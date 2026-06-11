@@ -779,7 +779,8 @@ export default function ImobiliariaApp() {
         onSelectEmpresa={onSelectEmpresa}
       />
       <main className="main">
-        {view !== "editor" && !editingAndar && (
+        {/* Cabeçalho global só na view de mapa (Voltar + breadcrumb); as demais telas têm cabeçalho próprio */}
+        {view === "map" && (
           <Header
             view={view}
             loteamentoNome={loteamento?.nome}
