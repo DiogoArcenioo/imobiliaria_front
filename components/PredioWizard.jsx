@@ -5,8 +5,7 @@ import { Building3DView } from './Building3DView';
 
 const STEP_INFO = 0;
 const STEP_FOOTPRINT = 1;
-const STEP_LAYOUT = 2;
-const STEP_DONE = 3;
+const STEP_DONE = 2;
 
 // Canvas de desenho do tamanho do prédio
 // Escala: 4px = 1m | Snap: 5m (20px) | Grid: 10m (40px)
@@ -199,7 +198,6 @@ export function PredioWizard({ onConfirm, onCancel }) {
   const [largura, setLargura] = useState(0);   // metros
   const [profundidade, setProfundidade] = useState(0); // metros
 
-  const [andaresIguais, setAndaresIguais] = useState(true);
   const [error, setError] = useState('');
 
   const cols = Math.max(1, Math.round(largura / 5));
@@ -240,7 +238,6 @@ export function PredioWizard({ onConfirm, onCancel }) {
       num_andares: numAndares,
       footprint_cols: cols,
       footprint_rows: rows,
-      andares_iguais: andaresIguais,
       bairro: bairro.trim() || undefined,
       cidade: cidade.trim() || undefined,
       estado: estado.trim() || undefined,
@@ -253,7 +250,7 @@ export function PredioWizard({ onConfirm, onCancel }) {
       <div className="modal-box wizard-box">
         {/* Steps indicator */}
         <div className="wizard-steps">
-          {['Informações', 'Tamanho', 'Layout', 'Confirmar'].map((label, i) => (
+          {['Informações', 'Tamanho', 'Confirmar'].map((label, i) => (
             <div key={i} className={`wstep${i === step ? ' active' : i < step ? ' done' : ''}`}>
               <div className="wstep-num">{i + 1}</div>
               <div className="wstep-lbl">{label}</div>
@@ -359,59 +356,7 @@ export function PredioWizard({ onConfirm, onCancel }) {
             </div>
           )}
 
-          {/* STEP 3 — Layout */}
-          {step === STEP_LAYOUT && (
-            <div className="wizard-panel">
-              <div>
-                <h2 className="wizard-title">Layout dos Andares</h2>
-                <p className="wizard-sub">
-                  Os andares terão o mesmo layout ou você quer criar cada um individualmente?
-                </p>
-              </div>
-
-              <div className="layout-options">
-                <button
-                  type="button"
-                  className={`layout-opt${andaresIguais ? ' selected' : ''}`}
-                  onClick={() => setAndaresIguais(true)}
-                >
-                  <div className="lo-icon">
-                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                      {[0, 1, 2].map((i) => (
-                        <rect key={i} x="6" y={8 + i * 13} width="36" height="10" rx="2"
-                          fill={andaresIguais ? '#3288e0' : '#cbd5e1'} />
-                      ))}
-                    </svg>
-                  </div>
-                  <div className="lo-label">Todos os andares iguais</div>
-                  <div className="lo-desc">
-                    Crie o layout do 1° andar e ele é replicado para todos os outros automaticamente.
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  className={`layout-opt${!andaresIguais ? ' selected' : ''}`}
-                  onClick={() => setAndaresIguais(false)}
-                >
-                  <div className="lo-icon">
-                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                      <rect x="6" y="8" width="36" height="10" rx="2" fill={!andaresIguais ? '#3288e0' : '#cbd5e1'} />
-                      <rect x="6" y="21" width="22" height="10" rx="2" fill={!andaresIguais ? '#f59e0b' : '#cbd5e1'} />
-                      <rect x="30" y="21" width="12" height="10" rx="2" fill={!andaresIguais ? '#22c55e' : '#cbd5e1'} />
-                      <rect x="6" y="34" width="36" height="10" rx="2" fill={!andaresIguais ? '#ef4444' : '#cbd5e1'} />
-                    </svg>
-                  </div>
-                  <div className="lo-label">Criar andar por andar</div>
-                  <div className="lo-desc">
-                    Defina o layout de cada andar individualmente — útil para térreo comercial, coberturas, etc.
-                  </div>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4 — Confirmar */}
+          {/* STEP 3 — Confirmar */}
           {step === STEP_DONE && (
             <div className="wizard-panel">
               <div>
@@ -423,7 +368,6 @@ export function PredioWizard({ onConfirm, onCancel }) {
                 <div className="cs-row"><span>Nome:</span><strong>{nome}</strong></div>
                 <div className="cs-row"><span>Andares:</span><strong>{numAndares}</strong></div>
                 <div className="cs-row"><span>Dimensões:</span><strong>{largura} × {profundidade}m</strong></div>
-                <div className="cs-row"><span>Layout:</span><strong>{andaresIguais ? 'Todos iguais' : 'Andar por andar'}</strong></div>
                 {cidade && (
                   <div className="cs-row">
                     <span>Cidade:</span>

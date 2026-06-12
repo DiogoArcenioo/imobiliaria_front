@@ -15,6 +15,7 @@ import { UserManagement } from "./UserManagement";
 import { PredioManagement } from "./PredioManagement";
 import { PredioWizard } from "./PredioWizard";
 import { LocacoesPanel } from "./LocacoesPanel";
+import { RelatoriosPanel } from "./RelatoriosPanel";
 import {
   TweakColor,
   TweakRadio,
@@ -529,6 +530,7 @@ export default function ImobiliariaApp() {
     if (view === "admin" && user?.role !== "admin") setView("dashboard");
     if (view === "usuarios" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
     if (view === "settings" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
+    if (view === "relatorios" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
     // Pré-carrega clientes ao abrir gerenciamento de prédios
     if (view === "predio" && clientes.length === 0) fetchClientes('');
   }, [view, user?.role]);
@@ -872,6 +874,10 @@ export default function ImobiliariaApp() {
             />
           )}
 
+          {view === "relatorios" && (user?.role === "gerente" || user?.role === "admin") && (
+            <RelatoriosPanel user={user} />
+          )}
+
           {view === "settings" && (user?.role === "gerente" || user?.role === "admin") && (
             <SettingsView
               empresa={settingsEmpresa}
@@ -1015,6 +1021,7 @@ export default function ImobiliariaApp() {
             view !== "predios" &&
             view !== "predio" &&
             view !== "locacoes" &&
+            view !== "relatorios" &&
             view !== "usuarios" && <EmptyState view={view} />}
         </div>
       </main>
