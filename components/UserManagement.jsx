@@ -67,19 +67,23 @@ export function UserManagement({
   const [saving, setSaving] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [filtroAtivo, setFiltroAtivo] = useState('ativo');
 
   const visibleUsers = useMemo(() => users.filter((u) => u.role !== "admin"), [users]);
   const activeUsers  = useMemo(() => visibleUsers.filter((u) => u.ativo !== false), [visibleUsers]);
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return visibleUsers;
-    return visibleUsers.filter((user) =>
+    let list = visibleUsers;
+    if (filtroAtivo === 'ativo') list = list.filter((u) => u.ativo !== false);
+    else if (filtroAtivo === 'inativo') list = list.filter((u) => u.ativo === false);
+    if (!q) return list;
+    return list.filter((user) =>
       [user.nome, user.login, user.email, user.telefone, ROLE_LABELS[user.role]]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(q))
     );
-  }, [query, visibleUsers]);
+  }, [query, visibleUsers, filtroAtivo]);
 
   const counts = useMemo(() => {
     return visibleUsers.reduce(
@@ -399,6 +403,19 @@ export function UserManagement({
             <div>
               <h2>Usuarios cadastrados</h2>
               <p>{filteredUsers.length} registros exibidos</p>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {[['ativo','Ativos'],['inativo','Inativos'],['todos','Todos']].map(([v, l]) => (
+                <button key={v} type="button"
+                  onClick={() => setFiltroAtivo(v)}
+                  style={{
+                    padding: '4px 12px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                    border: filtroAtivo === v ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: filtroAtivo === v ? 'var(--accent)' : 'none',
+                    color: filtroAtivo === v ? '#fff' : 'var(--text-muted)',
+                  }}
+                >{l}</button>
+              ))}
             </div>
             <div className="users-search">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">

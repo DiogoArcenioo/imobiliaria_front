@@ -17,6 +17,7 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
     { id: 'lotes', label: 'Lotes', icon: 'grid', badge: counts.lotes },
     { id: 'vendas', label: 'Vendas', icon: 'bag', badge: counts.vendas },
     { id: 'clientes', label: 'Clientes', icon: 'client', badge: counts.clientes },
+    { id: 'planos', label: 'Planos', icon: 'plans' },
     ...(user?.role === 'admin' || user?.role === 'gerente'
       ? [{ id: 'relatorios', label: 'Relatórios', icon: 'chart' }]
       : []),
@@ -40,6 +41,7 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
     chart: <path d="M3 15V9.5M7 15V3.5M11 15V7M15 15v-4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />,
     rent: <><path d="M3 7.5L9 3l6 4.5V15H3V7.5z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" /><path d="M6 15v-4h6v4M12.5 6.5c-.4-.5-1-.7-1.7-.7-1 0-1.8.5-1.8 1.2 0 1.8 3.7.7 3.7 2.7 0 .8-.8 1.4-1.9 1.4-.8 0-1.5-.3-1.9-.8M10.8 4.8v7.1" stroke="currentColor" strokeWidth="1.05" strokeLinecap="round" /></>,
     settings: <path d="M7.2 2.5h3.6l.4 1.9c.4.2.8.4 1.1.7l1.8-.6 1.8 3.1-1.4 1.3c0 .2.1.5.1.7s0 .5-.1.7l1.4 1.3-1.8 3.1-1.8-.6c-.3.3-.7.5-1.1.7l-.4 1.9H7.2l-.4-1.9c-.4-.2-.8-.4-1.1-.7l-1.8.6-1.8-3.1 1.4-1.3c0-.2-.1-.5-.1-.7s0-.5.1-.7L2.1 7.6l1.8-3.1 1.8.6c.3-.3.7-.5 1.1-.7l.4-1.9zM9 11.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none" />,
+    plans: <><path d="M3 3h10l2 2v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M6 7h6M6 10h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></>,
   };
 
   const initials = user?.nome

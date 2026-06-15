@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header, Sidebar } from "./Chrome";
-import { Dashboard } from "./Dashboard";
+import { Dashboard, LoteamentoCard } from "./Dashboard";
 import { LotCard } from "./LotCard";
 import { NegociacaoDrawer } from "./NegociacaoDrawer";
 import { MapEditor } from "./MapEditor";
@@ -16,6 +16,7 @@ import { PredioManagement } from "./PredioManagement";
 import { PredioWizard } from "./PredioWizard";
 import { LocacoesPanel } from "./LocacoesPanel";
 import { RelatoriosPanel } from "./RelatoriosPanel";
+import { PlanosPagina } from "./PlanosPagina";
 import {
   TweakColor,
   TweakRadio,
@@ -47,11 +48,14 @@ import {
   updateEmpresaSettings,
   updateMotivoCancelamento,
   updateLoteStatus,
+  updateLote,
   getPredios,
   getPredio,
   createPredio,
+  updatePredio,
   saveFloorPlan,
   updateApartamentoStatus,
+  updateApartamento,
   getLocacoes,
   getLocacoesResumo,
   encerrarLocacao,
@@ -525,6 +529,7 @@ export default function ImobiliariaApp() {
     ? { max_usuarios: settingsEmpresa.max_usuarios ?? null, nome: settingsEmpresa.plano ?? "—" }
     : null;
   const defaultPricePerM2 = Number(settingsEmpresa?.valor_m2_padrao) || 700;
+  const defaultApM2 = Number(settingsEmpresa?.ap_valor_m2_padrao) || 700;
 
   useEffect(() => {
     if (view === "admin" && user?.role !== "admin") setView("dashboard");
@@ -814,7 +819,7 @@ export default function ImobiliariaApp() {
             </div>
           )}
 
-          {(view === "dashboard" || view === "loteamentos") && (
+          {view === "dashboard" && (
             <Dashboard
               loteamentos={loteamentos}
               predios={predios}
@@ -833,6 +838,18 @@ export default function ImobiliariaApp() {
             />
           )}
 
+          {view === "loteamentos" && (
+            <LoteamentosView
+              loteamentos={loteamentos}
+              loading={loading}
+              onOpenLoteamento={onOpenLoteamento}
+              onOpenEditor={onOpenEditor}
+              onRefresh={fetchLoteamentos}
+              canCreateLoteamento={canCreateLoteamento}
+              canEditLoteamento={canEditLoteamento}
+            />
+          )}
+
           {view === "lotes" && (
             <LotsView
               loteamentos={loteamentos}
@@ -847,8 +864,10 @@ export default function ImobiliariaApp() {
           {view === "vendas" && (
             <SalesView
               loteamentos={loteamentos}
+              predios={predios}
               loading={loading}
               onOpenLoteamento={onOpenLoteamento}
+              onOpenPredios={() => { setView("predios"); setActivePredioId(null); }}
               user={user}
             />
           )}
@@ -882,6 +901,16 @@ export default function ImobiliariaApp() {
             <SettingsView
               empresa={settingsEmpresa}
               onSave={onSaveSettings}
+            />
+          )}
+
+          {view === "planos" && (
+            <PlanosPagina
+              currentEmpresa={settingsEmpresa}
+              onAssinar={async () => {
+                const updated = await getCurrentEmpresa();
+                setCurrentEmpresa(updated);
+              }}
             />
           )}
 
@@ -939,6 +968,26 @@ export default function ImobiliariaApp() {
                   onClose={() => setSelectedLot(null)}
                   onStatusChange={(status) => openSaleDialog(selectedLot.lot, activeLoteamentoId, status)}
                   onOpenDrawer={(lot) => setDrawerLot(lot)}
+                  onUpdatePrice={async (novoPreco) => {
+                    const lot = selectedLot.lot;
+                    if (!lot?.db_id) return;
+                    const updated = await updateLote(lot.db_id, { preco: novoPreco });
+                    setLoteamentos((prev) =>
+                      prev.map((lt) =>
+                        lt.id !== activeLoteamentoId
+                          ? lt
+                          : {
+                              ...lt,
+                              lots: (lt.lots || []).map((l) =>
+                                l.db_id === lot.db_id ? { ...l, preco: updated?.preco ?? novoPreco } : l
+                              ),
+                            }
+                      )
+                    );
+                    setSelectedLot((prev) =>
+                      prev ? { ...prev, lot: { ...prev.lot, preco: updated?.preco ?? novoPreco } } : prev
+                    );
+                  }}
                   user={user}
                 />
               )}
@@ -971,8 +1020,13 @@ export default function ImobiliariaApp() {
               predios={predios}
               loading={prediosLoading}
               canCreate={canCreateLoteamento}
+              canEdit={canEditLoteamento}
               onOpenPredio={(id) => { setActivePredioId(id); setView("predio"); }}
               onNewPredio={() => setShowPredioWizard(true)}
+              onToggleAtivo={async (p) => {
+                const updated = await updatePredio(p.id, { ativo: !p.ativo });
+                setPredios((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...updated } : x)));
+              }}
             />
           )}
 
@@ -1001,6 +1055,12 @@ export default function ImobiliariaApp() {
               onBack={() => { setView("predios"); setEditingAndar(false); }}
               onSaveFloorPlan={onSaveFloorPlan}
               onUpdateApStatus={onUpdateApStatus}
+              onUpdateAp={async (apId, data) => {
+                const updated = await updateApartamento(apId, data);
+                await refreshPredio(activePredioId);
+                return updated;
+              }}
+              defaultApM2={defaultApM2}
               clientes={clientes}
               user={user}
               onRefresh={() => Promise.all([refreshPredio(activePredioId), fetchLocacoes()])}
@@ -1022,7 +1082,8 @@ export default function ImobiliariaApp() {
             view !== "predio" &&
             view !== "locacoes" &&
             view !== "relatorios" &&
-            view !== "usuarios" && <EmptyState view={view} />}
+            view !== "usuarios" &&
+            view !== "planos" && <EmptyState view={view} />}
         </div>
       </main>
 
@@ -1152,26 +1213,29 @@ export default function ImobiliariaApp() {
 
 function SettingsView({ empresa, onSave }) {
   const [valorM2, setValorM2] = useState(() => String(Number(empresa?.valor_m2_padrao) || 700));
+  const [apValorM2, setApValorM2] = useState(() => String(Number(empresa?.ap_valor_m2_padrao) || 700));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setValorM2(String(Number(empresa?.valor_m2_padrao) || 700));
-  }, [empresa?.valor_m2_padrao]);
+    setApValorM2(String(Number(empresa?.ap_valor_m2_padrao) || 700));
+  }, [empresa?.valor_m2_padrao, empresa?.ap_valor_m2_padrao]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
 
     const parsed = Number(String(valorM2).replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      setError("Informe um valor por metro quadrado válido.");
+    const parsedAp = Number(String(apValorM2).replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0 || !Number.isFinite(parsedAp) || parsedAp < 0) {
+      setError("Informe valores por metro quadrado válidos.");
       return;
     }
 
     setSaving(true);
     try {
-      await onSave({ valor_m2_padrao: parsed });
+      await onSave({ valor_m2_padrao: parsed, ap_valor_m2_padrao: parsedAp });
     } catch (err) {
       setError(err.message || "Erro ao salvar configurações.");
     } finally {
@@ -1191,7 +1255,7 @@ function SettingsView({ empresa, onSave }) {
 
         <div className="user-form-grid">
           <label className="user-field">
-            <span>Valor padrão por m²</span>
+            <span>Valor padrão por m² (lotes)</span>
             <input
               type="number"
               min="0"
@@ -1200,10 +1264,20 @@ function SettingsView({ empresa, onSave }) {
               onChange={(event) => setValorM2(event.target.value)}
             />
           </label>
+          <label className="user-field">
+            <span>Valor padrão por m² (apartamentos)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={apValorM2}
+              onChange={(event) => setApValorM2(event.target.value)}
+            />
+          </label>
         </div>
 
         <div className="settings-note">
-          Esse valor será usado como preço padrão ao criar novos terrenos no editor.
+          Esses valores serão usados como preço padrão ao criar novos lotes e apartamentos no editor.
         </div>
 
         {error && <div className="form-alert">{error}</div>}
@@ -1213,6 +1287,105 @@ function SettingsView({ empresa, onSave }) {
         </button>
       </form>
     </div>
+  );
+}
+
+function LoteamentosView({ loteamentos, loading, onOpenLoteamento, onOpenEditor, onRefresh, canCreateLoteamento, canEditLoteamento }) {
+  const [filtroAtivo, setFiltroAtivo] = useState('ativo');
+  const [toggling, setToggling] = useState(null);
+
+  const filtered = loteamentos.filter((lt) => {
+    if (filtroAtivo === 'ativo') return lt.ativo !== false;
+    if (filtroAtivo === 'inativo') return lt.ativo === false;
+    return true;
+  });
+
+  const handleToggleAtivo = async (lt) => {
+    setToggling(lt.id);
+    try {
+      await updateLote(lt.id, { ativo: !lt.ativo }); // uses loteamento PATCH
+      onRefresh?.();
+    } catch (err) {
+      alert(err.message || 'Erro ao arquivar loteamento.');
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  return (
+    <section className="list-page">
+      <header className="list-page-head">
+        <div>
+          <div className="dash-eyebrow">LOTEAMENTOS</div>
+          <h1 className="list-page-title">Loteamentos cadastrados</h1>
+          <p className="dash-sub">{filtered.length} de {loteamentos.length} empreendimento{loteamentos.length !== 1 ? 's' : ''} exibido{filtered.length !== 1 ? 's' : ''}.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {[['ativo','Ativos'],['inativo','Inativos'],['todos','Todos']].map(([v, l]) => (
+            <button key={v} type="button" onClick={() => setFiltroAtivo(v)} style={{
+              padding: '5px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+              border: filtroAtivo === v ? '1px solid var(--accent)' : '1px solid var(--border)',
+              background: filtroAtivo === v ? 'var(--accent)' : 'none',
+              color: filtroAtivo === v ? '#fff' : 'var(--text-muted)',
+            }}>{l}</button>
+          ))}
+          <button className="sec-tool-btn" onClick={onRefresh} title="Atualizar">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M14 8A6 6 0 1 1 8 2a6 6 0 0 1 4.24 1.76L14 2v4h-4l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Atualizar
+          </button>
+          {canCreateLoteamento && (
+            <button className="qa-btn qa-btn-primary" onClick={() => onOpenEditor?.(null)}>
+              <span className="qa-ic" style={{ color: '#ffffff' }}>✎</span>
+              Novo loteamento
+            </button>
+          )}
+        </div>
+      </header>
+
+      {loading ? (
+        <div className="lot-cards-loading">
+          <div className="loading-card" />
+          <div className="loading-card" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="list-empty">
+          <p>{loteamentos.length === 0 ? 'Nenhum loteamento encontrado.' : `Nenhum loteamento ${filtroAtivo === 'ativo' ? 'ativo' : 'inativo'} encontrado.`}</p>
+          {canCreateLoteamento && loteamentos.length === 0 && (
+            <button className="qa-btn qa-btn-primary" onClick={() => onOpenEditor?.(null)}>Criar loteamento</button>
+          )}
+        </div>
+      ) : (
+        <div className="lot-cards">
+          {filtered.map((loteamento) => (
+            <div key={loteamento.id} style={{ position: 'relative', opacity: loteamento.ativo === false ? 0.65 : 1 }}>
+              <LoteamentoCard
+                loteamento={loteamento}
+                onClick={() => onOpenLoteamento(loteamento.id)}
+                onEdit={canEditLoteamento ? () => onOpenEditor?.(loteamento) : null}
+              />
+              {canEditLoteamento && (
+                <button
+                  onClick={() => handleToggleAtivo(loteamento)}
+                  disabled={toggling === loteamento.id}
+                  title={loteamento.ativo === false ? 'Reativar loteamento' : 'Arquivar loteamento'}
+                  style={{
+                    position: 'absolute', top: 10, right: 10, zIndex: 2,
+                    padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600,
+                    border: loteamento.ativo === false ? '1px solid #86efac' : '1px solid #fca5a5',
+                    background: 'var(--surface)', cursor: 'pointer',
+                    color: loteamento.ativo === false ? '#15803d' : '#dc2626',
+                  }}
+                >
+                  {toggling === loteamento.id ? '...' : loteamento.ativo === false ? 'Reativar' : 'Arquivar'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1251,32 +1424,114 @@ function LotsView({ loteamentos, loading, onOpenLoteamento, onStatusAction, onOp
   );
 }
 
-function SalesView({ loteamentos, loading, onOpenLoteamento, user }) {
+function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpenPredios, user }) {
   const lots = flattenLots(loteamentos);
   const isVendedor = user?.role === "vendedor";
+
   const soldLots = lots.filter(
-    (lot) =>
-      lot.status === "vendido" &&
-      (!isVendedor || lot.cliente_vinculado_por === user?.id)
+    (lot) => lot.status === "vendido" && (!isVendedor || lot.cliente_vinculado_por === user?.id)
   );
-  const total = soldLots.reduce((sum, lot) => sum + (Number(lot.preco) || 0), 0);
+
+  const soldAps = predios
+    .flatMap((p) =>
+      (p.andares || []).flatMap((a) =>
+        (a.apartamentos || [])
+          .filter((ap) => ap.status === "vendido" && (!isVendedor || ap.cliente_vinculado_por === user?.id))
+          .map((ap) => ({ ...ap, predioNome: p.nome, predioId: p.id, cidade: p.cidade, estado: p.estado }))
+      )
+    );
+
+  const totalLotes = soldLots.reduce((s, l) => s + (Number(l.preco) || 0), 0);
+  const totalAps = soldAps.reduce((s, a) => s + (Number(a.preco_venda) || 0), 0);
+  const total = totalLotes + totalAps;
+  const totalCount = soldLots.length + soldAps.length;
 
   return (
     <section className="list-page">
       <header className="list-page-head">
         <div>
           <div className="dash-eyebrow">VENDAS</div>
-          <h1 className="list-page-title">{isVendedor ? "Minhas vendas" : "Lotes vendidos"}</h1>
-          <p className="dash-sub">{soldLots.length} vendas{isVendedor ? " realizadas por você" : " registradas"} · {fmtBRLShort(total)} em VGV realizado.</p>
+          <h1 className="list-page-title">{isVendedor ? "Minhas vendas" : "Vendas realizadas"}</h1>
+          <p className="dash-sub">
+            {totalCount} {totalCount === 1 ? "venda" : "vendas"}{isVendedor ? " realizadas por você" : " registradas"}
+            {soldLots.length > 0 && soldAps.length > 0 && ` (${soldLots.length} lotes · ${soldAps.length} aptos)`}
+            {" · "}{fmtBRLShort(total)} em VGV realizado.
+          </p>
         </div>
       </header>
 
       {loading ? (
         <div className="list-empty">Carregando vendas...</div>
-      ) : soldLots.length === 0 ? (
-        <div className="list-empty">Nenhuma venda registrada nos loteamentos carregados.</div>
+      ) : totalCount === 0 ? (
+        <div className="list-empty">Nenhuma venda registrada.</div>
       ) : (
-        <LotTable lots={soldLots} onOpenLoteamento={onOpenLoteamento} salesOnly />
+        <div className="lot-table-wrap">
+          <table className="lot-table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Unidade</th>
+                <th>Empreendimento</th>
+                <th>Área</th>
+                <th>Valor</th>
+                <th>Cliente</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {soldLots.map((lot) => (
+                <tr key={`lote-${lot.db_id || lot.id}`}>
+                  <td><span className="status-pill" style={{ color: '#3288e0', background: 'rgba(50,136,224,.12)' }}>Lote</span></td>
+                  <td><b className="lot-code">{lot.id}</b>{lot.quadra && <div className="table-sub">Quadra {lot.quadra}</div>}</td>
+                  <td>
+                    <button className="link-button" onClick={() => onOpenLoteamento?.(lot.loteamentoId)}>
+                      {lot.loteamentoNome}
+                    </button>
+                    <div className="table-sub">{[lot.cidade, lot.estado].filter(Boolean).join('/') || '—'}</div>
+                  </td>
+                  <td>{lot.area ? `${lot.area} m²` : '—'}</td>
+                  <td>{fmtBRL(lot.preco)}</td>
+                  <td>
+                    {lot.cliente ? (
+                      <>
+                        <b>{lot.cliente.nome}</b>
+                        <div className="table-sub">{formatCpfCnpj(lot.cliente.cpf_cnpj)}</div>
+                      </>
+                    ) : '—'}
+                  </td>
+                  <td>
+                    <button className="table-action table-action-ghost" onClick={() => onOpenLoteamento?.(lot.loteamentoId)}>Mapa</button>
+                  </td>
+                </tr>
+              ))}
+              {soldAps.map((ap) => (
+                <tr key={`ap-${ap.id}`}>
+                  <td><span className="status-pill" style={{ color: '#8b5cf6', background: 'rgba(139,92,246,.12)' }}>Apartamento</span></td>
+                  <td><b className="lot-code">{ap.ap_id}</b></td>
+                  <td>
+                    <button className="link-button" onClick={() => onOpenPredios?.()}>
+                      {ap.predioNome}
+                    </button>
+                    <div className="table-sub">{[ap.cidade, ap.estado].filter(Boolean).join('/') || '—'}</div>
+                  </td>
+                  <td>{ap.area > 0 ? `${ap.area} m²` : '—'}</td>
+                  <td>{fmtBRL(ap.preco_venda)}</td>
+                  <td>
+                    {ap.cliente ? (
+                      <>
+                        <b>{ap.cliente.nome}</b>
+                        <div className="table-sub">{formatCpfCnpj(ap.cliente.cpf_cnpj)}</div>
+                      </>
+                    ) : '—'}
+                  </td>
+                  <td>
+                    <button className="table-action table-action-ghost" onClick={() => onOpenPredios?.()}>Prédio</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -1403,12 +1658,33 @@ function LoteamentoSwitcher({ loteamentos, current, onSwitch, onEdit, canEditLot
   );
 }
 
-function PrediosListView({ predios, loading, canCreate, onOpenPredio, onNewPredio }) {
+function PrediosListView({ predios, loading, canCreate, canEdit, onOpenPredio, onNewPredio, onToggleAtivo }) {
+  const [filtroAtivo, setFiltroAtivo] = useState('ativo');
+  const [toggling, setToggling] = useState(null);
+
   const AP_STATUS_COLORS = {
     disponivel: '#22c55e',
     reservado: '#f59e0b',
     vendido: '#ef4444',
     alugado: '#8b5cf6',
+  };
+
+  const filtered = predios.filter((p) => {
+    if (filtroAtivo === 'ativo') return p.ativo !== false;
+    if (filtroAtivo === 'inativo') return p.ativo === false;
+    return true;
+  });
+
+  const handleToggle = async (e, p) => {
+    e.stopPropagation();
+    setToggling(p.id);
+    try {
+      await onToggleAtivo?.(p);
+    } catch (err) {
+      alert(err.message || 'Erro ao arquivar prédio.');
+    } finally {
+      setToggling(null);
+    }
   };
 
   return (
@@ -1417,53 +1693,81 @@ function PrediosListView({ predios, loading, canCreate, onOpenPredio, onNewPredi
         <div>
           <div className="dash-eyebrow">PRÉDIOS</div>
           <h1 className="list-page-title">Prédios cadastrados</h1>
-          <p className="dash-sub">Gerencie prédios, andares e apartamentos para venda ou aluguel.</p>
+          <p className="dash-sub">{filtered.length} de {predios.length} prédio{predios.length !== 1 ? 's' : ''} exibido{filtered.length !== 1 ? 's' : ''}.</p>
         </div>
-        {canCreate && (
-          <button className="qa-btn qa-btn-primary" onClick={onNewPredio}>
-            <span className="qa-ic" style={{ color: '#ffffff' }}>+</span>
-            Novo Prédio
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {[['ativo','Ativos'],['inativo','Inativos'],['todos','Todos']].map(([v, l]) => (
+            <button key={v} type="button" onClick={() => setFiltroAtivo(v)} style={{
+              padding: '5px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+              border: filtroAtivo === v ? '1px solid var(--accent)' : '1px solid var(--border)',
+              background: filtroAtivo === v ? 'var(--accent)' : 'none',
+              color: filtroAtivo === v ? '#fff' : 'var(--text-muted)',
+            }}>{l}</button>
+          ))}
+          {canCreate && (
+            <button className="qa-btn qa-btn-primary" onClick={onNewPredio}>
+              <span className="qa-ic" style={{ color: '#ffffff' }}>+</span>
+              Novo Prédio
+            </button>
+          )}
+        </div>
       </header>
 
       {loading ? (
         <div className="list-empty">Carregando prédios...</div>
-      ) : predios.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="list-empty">
-          <p>Nenhum prédio cadastrado.</p>
-          {canCreate && (
+          <p>{predios.length === 0 ? 'Nenhum prédio cadastrado.' : `Nenhum prédio ${filtroAtivo === 'ativo' ? 'ativo' : 'inativo'} encontrado.`}</p>
+          {canCreate && predios.length === 0 && (
             <button className="qa-btn qa-btn-primary" onClick={onNewPredio}>Criar prédio</button>
           )}
         </div>
       ) : (
         <div className="predios-grid">
-          {predios.map((p) => {
+          {filtered.map((p) => {
             const stats = p.stats || {};
             const total = stats.total || 0;
             const ocupPct = total > 0 ? Math.round(((total - (stats.disponivel || 0)) / total) * 100) : 0;
             return (
-              <div key={p.id} className="lot-card-item" style={{ cursor: 'pointer' }} onClick={() => onOpenPredio(p.id)}>
-                <div className="lci-header">
-                  <div>
-                    <div className="lci-name">{p.nome}</div>
-                    {(p.cidade || p.bairro) && (
-                      <div className="lci-sub">{[p.bairro, p.cidade, p.estado].filter(Boolean).join(' · ')}</div>
-                    )}
+              <div key={p.id} style={{ position: 'relative', opacity: p.ativo === false ? 0.65 : 1 }}>
+                <div className="lot-card-item" style={{ cursor: 'pointer' }} onClick={() => onOpenPredio(p.id)}>
+                  <div className="lci-header">
+                    <div>
+                      <div className="lci-name">{p.nome}</div>
+                      {(p.cidade || p.bairro) && (
+                        <div className="lci-sub">{[p.bairro, p.cidade, p.estado].filter(Boolean).join(' · ')}</div>
+                      )}
+                    </div>
+                    <div className="lci-floors">{p.num_andares} andares</div>
                   </div>
-                  <div className="lci-floors">{p.num_andares} andares</div>
+                  <div className="lci-stats">
+                    {Object.entries(AP_STATUS_COLORS).map(([s, c]) => (
+                      <span key={s} style={{ color: c, fontSize: 12, fontWeight: 600 }}>
+                        {stats[s] ?? 0} {s}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="lci-bar">
+                    <div className="lci-bar-fill" style={{ width: `${ocupPct}%`, background: p.cor || '#3288e0' }} />
+                  </div>
+                  <div className="lci-bar-label">{ocupPct}% ocupado · {total} aptos total</div>
                 </div>
-                <div className="lci-stats">
-                  {Object.entries(AP_STATUS_COLORS).map(([s, c]) => (
-                    <span key={s} style={{ color: c, fontSize: 12, fontWeight: 600 }}>
-                      {stats[s] ?? 0} {s}
-                    </span>
-                  ))}
-                </div>
-                <div className="lci-bar">
-                  <div className="lci-bar-fill" style={{ width: `${ocupPct}%`, background: p.cor || '#3288e0' }} />
-                </div>
-                <div className="lci-bar-label">{ocupPct}% ocupado · {total} aptos total</div>
+                {canEdit && onToggleAtivo && (
+                  <button
+                    onClick={(e) => handleToggle(e, p)}
+                    disabled={toggling === p.id}
+                    title={p.ativo === false ? 'Reativar prédio' : 'Arquivar prédio'}
+                    style={{
+                      position: 'absolute', top: 10, right: 10, zIndex: 2,
+                      padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600,
+                      border: p.ativo === false ? '1px solid #86efac' : '1px solid #fca5a5',
+                      background: 'var(--surface)', cursor: 'pointer',
+                      color: p.ativo === false ? '#15803d' : '#dc2626',
+                    }}
+                  >
+                    {toggling === p.id ? '...' : p.ativo === false ? 'Reativar' : 'Arquivar'}
+                  </button>
+                )}
               </div>
             );
           })}

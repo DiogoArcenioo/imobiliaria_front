@@ -122,6 +122,8 @@ export function PredioManagement({
   onBack,
   onSaveFloorPlan,
   onUpdateApStatus,
+  onUpdateAp,
+  defaultApM2 = 700,
   clientes = [],
   user,
   onRefresh,
@@ -265,6 +267,7 @@ export function PredioManagement({
         onClose={() => { setEditingFloor(false); onStopEditingAndar?.(); }}
         allAndares={predio.andares}
         onSelectAndar={handleSelectAndarInEditor}
+        defaultApM2={defaultApM2}
       />
     );
   }
@@ -391,6 +394,11 @@ export function PredioManagement({
               position={apPos}
               onClose={() => setSelectedAp(null)}
               onStatusChange={handleStatusChange}
+              onUpdatePrice={onUpdateAp ? async (novoPreco) => {
+                await onUpdateAp(selectedAp.id, { preco_venda: novoPreco });
+                setSelectedAp((prev) => prev ? { ...prev, preco_venda: novoPreco } : prev);
+              } : undefined}
+              defaultPriceMode="m2"
               user={user}
             />
           )}

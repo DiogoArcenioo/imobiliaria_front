@@ -32,6 +32,14 @@ export const Dashboard = ({
   const myVgvVendido = soldLots.reduce((sum, lot) => sum + (Number(lot.preco) || 0), 0);
   const displayMetrics = isVendedor ? { ...metrics, ven: myVen, vgvVendido: myVgvVendido } : metrics;
 
+  const allAps = predios.flatMap((p) => (p.andares || []).flatMap((a) => a.apartamentos || []));
+  const soldAps = isVendedor
+    ? allAps.filter((ap) => ap.status === 'vendido' && ap.cliente_vinculado_por === user?.id)
+    : allAps.filter((ap) => ap.status === 'vendido');
+  const soldApsVgv = soldAps.reduce((s, ap) => s + (Number(ap.preco_venda) || 0), 0);
+  const totalVendidos = (isVendedor ? myVen : metrics.ven) + soldAps.length;
+  const totalVgvVendido = (isVendedor ? myVgvVendido : metrics.vgvVendido) + soldApsVgv;
+
   // Admin sem empresa selecionada: tela de seleção
   if (user?.role === 'admin' && !selectedEmpresa) {
     return (
@@ -89,8 +97,8 @@ export const Dashboard = ({
                 ? 'Nenhum loteamento cadastrado. Crie o primeiro para começar.'
                 : 'Nenhum loteamento cadastrado para esta empresa.'
               : isVendedor
-            ? <>Você vendeu <b>{displayMetrics.ven} lotes</b> — {fmtBRLShort(displayMetrics.vgvVendido)} em VGV realizado.</>
-            : <>Você tem <b>{metrics.total} lotes cadastrados</b> e {metrics.ven} lotes vendidos.</>}
+            ? <>Você vendeu <b>{totalVendidos} unidades</b> — {fmtBRLShort(totalVgvVendido)} em VGV realizado.</>
+            : <>Você tem <b>{metrics.total} lotes cadastrados</b> e {totalVendidos} unidades vendidas (lotes + apartamentos).</>}
           </p>
         </div>
         {canCreateLoteamento && (
@@ -108,9 +116,9 @@ export const Dashboard = ({
           <>
             <MetricCard
               label="Minhas vendas"
-              value={displayMetrics.ven}
-              delta={displayMetrics.ven > 0 ? fmtBRLShort(displayMetrics.vgvVendido) : '—'}
-              sub="VGV realizado por você"
+              value={totalVendidos}
+              delta={totalVendidos > 0 ? fmtBRLShort(totalVgvVendido) : '—'}
+              sub={soldAps.length > 0 ? `${myVen} lotes · ${soldAps.length} aptos` : 'VGV realizado por você'}
               big
             />
             <MetricCard
@@ -129,8 +137,8 @@ export const Dashboard = ({
             />
             <MetricCard
               label="Meu VGV"
-              value={fmtBRLShort(displayMetrics.vgvVendido)}
-              delta={displayMetrics.ven > 0 ? `${displayMetrics.ven} lotes` : '—'}
+              value={fmtBRLShort(totalVgvVendido)}
+              delta={totalVendidos > 0 ? `${totalVendidos} unid.` : '—'}
               sub="total vendido por você"
               color="red"
             />
@@ -160,9 +168,9 @@ export const Dashboard = ({
             />
             <MetricCard
               label="Vendidos"
-              value={metrics.ven}
-              delta={metrics.ven > 0 ? fmtBRLShort(metrics.vgvVendido) : '—'}
-              sub="VGV realizado"
+              value={totalVendidos}
+              delta={totalVendidos > 0 ? fmtBRLShort(totalVgvVendido) : '—'}
+              sub={soldAps.length > 0 ? `${metrics.ven} lotes · ${soldAps.length} aptos` : 'VGV realizado'}
               color="red"
             />
             {predios.length > 0 && (
@@ -291,7 +299,7 @@ function MetricCard({ label, value, delta, sub, color, big }) {
   );
 }
 
-function LoteamentoCard({ loteamento, onClick, onEdit }) {
+export function LoteamentoCard({ loteamento, onClick, onEdit }) {
   const lots = loteamento.lots || [];
   const counts = { disponivel: 0, reservado: 0, vendido: 0 };
   for (const lot of lots) counts[lot.status] = (counts[lot.status] || 0) + 1;
@@ -377,7 +385,7 @@ function LoteamentoCard({ loteamento, onClick, onEdit }) {
   );
 }
 
-function MiniMap({ loteamento }) {
+export function MiniMap({ loteamento }) {
   const lots = loteamento.lots || [];
   const viewBox = loteamento.viewBox || '0 0 1400 900';
   const [, , width = 1400, height = 900] = viewBox.split(' ').map(Number);

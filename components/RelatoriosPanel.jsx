@@ -130,6 +130,7 @@ export function RelatoriosPanel({ user }) {
   const [groupBy, setGroupBy] = useState('vendedor');
   const [filtroVendedor, setFiltroVendedor] = useState('');
   const [filtroEmpreendimento, setFiltroEmpreendimento] = useState('');
+  const [filtroOrigem, setFiltroOrigem] = useState(''); // '' | 'lote' | 'apartamento'
   const [busca, setBusca] = useState('');
 
   const fetchData = useCallback(async () => {
@@ -153,7 +154,7 @@ export function RelatoriosPanel({ user }) {
 
   const calc = useMemo(() => {
     if (!data) return null;
-    const vendas = data.vendas || [];
+    const vendas = (data.vendas || []).filter((v) => !filtroOrigem || v.origem === filtroOrigem);
     const locacoes = data.locacoes || [];
     const reservas = data.reservas || [];
     const cancelamentos = data.cancelamentos || [];
@@ -254,7 +255,7 @@ export function RelatoriosPanel({ user }) {
       faturamentoVendas, receitaMensalAluguel, novosContratosValor, cancelamentosValor,
       ranking, empreendimentos, serie, serieMax,
     };
-  }, [data, range]);
+  }, [data, range, filtroOrigem]);
 
   // ── Aba Explorar: linhas filtradas do conjunto selecionado ──
   const explorar = useMemo(() => {
@@ -410,10 +411,27 @@ export function RelatoriosPanel({ user }) {
             </span>
           )}
         </div>
+
+        <div className="rel-period" style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', alignSelf: 'center' }}>Vendas:</span>
+          {[
+            { id: '', label: 'Todos' },
+            { id: 'lote', label: 'Lotes' },
+            { id: 'apartamento', label: 'Apartamentos' },
+          ].map((o) => (
+            <button
+              key={o.id}
+              className={'rel-chip' + (filtroOrigem === o.id ? ' rel-chip-active' : '')}
+              onClick={() => setFiltroOrigem(o.id)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'visao' ? (
-        <VisaoGeral calc={calc} data={data} periodoLabel={periodoLabel} />
+        <VisaoGeral calc={calc} data={data} periodoLabel={periodoLabel} filtroOrigem={filtroOrigem} />
       ) : (
         <Explorar
           data={data}
@@ -427,6 +445,7 @@ export function RelatoriosPanel({ user }) {
           setFiltroVendedor={setFiltroVendedor}
           filtroEmpreendimento={filtroEmpreendimento}
           setFiltroEmpreendimento={setFiltroEmpreendimento}
+          filtroOrigem={filtroOrigem}
           busca={busca}
           setBusca={setBusca}
           onExport={handleExport}
@@ -463,7 +482,8 @@ function RelHeader({ user, onRefresh }) {
 
 // ════════════════════════════ Aba: Visão geral ════════════════════════════
 
-function VisaoGeral({ calc, data, periodoLabel }) {
+function VisaoGeral({ calc, data, periodoLabel, filtroOrigem }) {
+  const origemLabel = filtroOrigem === 'lote' ? ' · Lotes' : filtroOrigem === 'apartamento' ? ' · Apartamentos' : '';
   const estoque = data.estoque || { lotes: {}, apartamentos: {} };
   const ticketMedio = calc.vendasP.length ? calc.faturamentoVendas / calc.vendasP.length : 0;
 
@@ -472,7 +492,7 @@ function VisaoGeral({ calc, data, periodoLabel }) {
       <section className="metric-grid rel-metric-grid">
         <div className="metric-card metric-card-big">
           <div className="mc-top">
-            <span className="mc-label">Faturamento em vendas</span>
+            <span className="mc-label">Faturamento em vendas{origemLabel}</span>
             <span className="mc-delta" style={{ color: 'var(--accent)' }}>{periodoLabel}</span>
           </div>
           <div className="mc-value">{fmtBRLShort(calc.faturamentoVendas)}</div>
@@ -690,7 +710,7 @@ function EstoqueLinha({ titulo, total, segmentos, extra }) {
 function Explorar({
   data, explorar, dataset, setDataset, groupBy, setGroupBy,
   filtroVendedor, setFiltroVendedor, filtroEmpreendimento, setFiltroEmpreendimento,
-  busca, setBusca, onExport, periodoLabel,
+  filtroOrigem, busca, setBusca, onExport, periodoLabel,
 }) {
   const equipe = (data.equipe || []).filter((u) => u.role === 'vendedor' || u.role === 'gerente');
 
@@ -772,6 +792,7 @@ function Explorar({
         <>
           <div className="rel-result-line">
             <b>{explorar.rows.length}</b> {explorar.rows.length === 1 ? 'registro' : 'registros'} no período "{periodoLabel}"
+            {dataset === 'vendas' && filtroOrigem && <span> · {filtroOrigem === 'lote' ? 'apenas lotes' : 'apenas apartamentos'}</span>}
             {' · '}total <b>{fmtBRL(explorar.total)}</b>
             {dataset === 'locacoes' ? ' em valor mensal contratado' : ''}
           </div>

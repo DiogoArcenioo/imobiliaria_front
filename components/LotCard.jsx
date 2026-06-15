@@ -5,11 +5,80 @@ import { fmtBRL, statusLabel as getStatusLabel } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { STATUS_COLORS } from './MapView';
 
-export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange, onOpenDrawer, user }) => {
+function PriceEditor({ preco, area, canEdit, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef(null);
+
+  const open = () => {
+    setDraft(preco != null ? String(preco) : '');
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const cancel = () => setEditing(false);
+
+  const save = async () => {
+    const num = Number(String(draft).replace(/\D/g, '')) || 0;
+    if (num === Number(preco)) { cancel(); return; }
+    setSaving(true);
+    try {
+      await onSave(num);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const precoM2 = area > 0 && preco > 0 ? Math.round(preco / area) : null;
+
+  if (editing) {
+    return (
+      <div className="lcd-price-edit">
+        <span className="lcd-price-edit-label">R$</span>
+        <input
+          ref={inputRef}
+          className="lcd-price-input"
+          type="number"
+          min="0"
+          step="1000"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel(); }}
+          disabled={saving}
+        />
+        <button className="lcd-price-save" onClick={save} disabled={saving} title="Salvar">
+          {saving ? '...' : '✓'}
+        </button>
+        <button className="lcd-price-cancel" onClick={cancel} disabled={saving} title="Cancelar">✕</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="lcd-price-row">
+      <div>
+        <div className="lcd-price">{fmtBRL(preco)}</div>
+        {precoM2 && <div className="lcd-price-m2">{fmtBRL(precoM2)} / m²</div>}
+      </div>
+      {canEdit && (
+        <button className="lcd-price-edit-btn" onClick={open} title="Editar preço">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M11.5 2.5a1.41 1.41 0 0 1 2 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange, onUpdatePrice, onOpenDrawer, user }) => {
   if (!lot) return null;
   const status = STATUS_COLORS[lot.status] || STATUS_COLORS.disponivel;
   const statusLabel = getStatusLabel(lot.status);
   const [actionLoading, setActionLoading] = useState(false);
+  const canEditPrice = onUpdatePrice && user && ['admin', 'gerente'].includes(user.role) && lot.status !== 'vendido';
 
   const photoBg = lot.status === 'vendido'
     ? 'linear-gradient(135deg, #3a2a2a 0%, #5a3838 100%)'
@@ -78,7 +147,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
             {statusLabel}
           </div>
         </div>
-        <div className="lcc-price">{fmtBRL(lot.preco)}</div>
+        <PriceEditor preco={lot.preco} area={lot.area} canEdit={canEditPrice} onSave={onUpdatePrice} />
         <div className="lcc-grid">
           <div className="lcc-cell">
             <div className="lcc-cell-k">Área</div>
@@ -142,10 +211,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
             )}
           </div>
           <div className="lcp-quadra">Quadra {lot.quadra || '—'} · Lote {lot.numero || lot.id}</div>
-          <div className="lcp-price">
-            {fmtBRL(lot.preco)}
-            {lot.area > 0 && <span className="lcp-price-sub"> · {fmtBRL(Math.round(lot.preco / lot.area))} /m²</span>}
-          </div>
+          <PriceEditor preco={lot.preco} area={lot.area} canEdit={canEditPrice} onSave={onUpdatePrice} />
           <div className="lcp-specs">
             <div className="lcp-spec">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2h12v12H2z M2 5h12 M5 2v12 M11 2v12 M2 11h12" stroke="currentColor" strokeWidth="1.2" /></svg>
@@ -214,8 +280,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
             {statusLabel}
           </div>
           <div className="lcd-quadra">Quadra {lot.quadra || '—'} · Lote {lot.numero || lot.id}</div>
-          <div className="lcd-price">{fmtBRL(lot.preco)}</div>
-          {lot.area > 0 && <div className="lcd-price-m2">{fmtBRL(Math.round(lot.preco / lot.area))} / m²</div>}
+          <PriceEditor preco={lot.preco} area={lot.area} canEdit={canEditPrice} onSave={onUpdatePrice} />
         </div>
       </div>
 

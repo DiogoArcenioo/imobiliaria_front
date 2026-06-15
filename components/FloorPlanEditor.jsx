@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 const GRID = 20;
 const DEFAULT_W = 800;
 const DEFAULT_H = 600;
-const MIN_W = 400; const MAX_W = 2000;
-const MIN_H = 280; const MAX_H = 1500;
+const MIN_W = 400; const MAX_W = 8000;
+const MIN_H = 280; const MAX_H = 6000;
 
 const AP_COLORS = {
   disponivel: '#22c55e',
@@ -131,7 +131,9 @@ function normalizeFloorShape(shape, index) {
     const y = Number(source.y ?? shapeData.y) || 0;
     const w = Math.max(GRID, Number(source.w ?? shapeData.w) || GRID);
     const h = Math.max(GRID, Number(source.h ?? shapeData.h) || GRID);
-    return { ...source, ...shapeData, id, kind: 'ap', x, y, w, h, center: [x + w / 2, y + h / 2] };
+    const largura_m = Number(source.largura_m ?? shapeData.largura_m) || Math.round(w / GRID);
+    const comprimento_m = Number(source.comprimento_m ?? shapeData.comprimento_m) || Math.round(h / GRID);
+    return { ...source, ...shapeData, id, kind: 'ap', x, y, w, h, largura_m, comprimento_m, center: [x + w / 2, y + h / 2] };
   }
 
   if (kind === 'ap-poly') {
@@ -211,7 +213,11 @@ function resizeRectFromHandle(shape, nodeIdx, newX, newY) {
 
   const next = { ...shape, x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
   next.center = [next.x + next.w / 2, next.y + next.h / 2];
-  if (next.kind === 'ap') next.area = Math.round((next.w / GRID) * (next.h / GRID));
+  if (next.kind === 'ap') {
+    next.largura_m = Math.round(next.w / GRID);
+    next.comprimento_m = Math.round(next.h / GRID);
+    next.area = next.largura_m * next.comprimento_m;
+  }
   return next;
 }
 
@@ -526,10 +532,47 @@ function PropertiesPanel({ shape, onChange, onDelete, canvasSize, onCanvasSizeCh
         </PSection>
 
         <PSection title="Dimensões">
-          <PRow label="Área (m²)">
-            <input type="number" min="0" value={shape.area ?? ''}
-              onChange={(e) => onChange({ area: Number(e.target.value) })} />
-          </PRow>
+          {shape.kind === 'ap' ? (
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>Largura (m)</span>
+                  <input type="number" min="1" step="1"
+                    value={shape.largura_m ?? Math.round((shape.w || GRID) / GRID)}
+                    style={{ width: '100%' }}
+                    onChange={(e) => {
+                      const largura_m = Math.max(1, Number(e.target.value) || 1);
+                      const comprimento_m = shape.comprimento_m ?? Math.round((shape.h || GRID) / GRID);
+                      onChange({ largura_m, comprimento_m, w: largura_m * GRID, h: comprimento_m * GRID, area: largura_m * comprimento_m });
+                      const neededW = (shape.x || 0) + largura_m * GRID + GRID * 2;
+                      if (neededW > canvasSize.w) onCanvasSizeChange({ w: neededW });
+                    }} />
+                </label>
+                <div style={{ alignSelf: 'flex-end', paddingBottom: 8, color: 'var(--text-muted)', fontSize: 13 }}>×</div>
+                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600 }}>Comprimento (m)</span>
+                  <input type="number" min="1" step="1"
+                    value={shape.comprimento_m ?? Math.round((shape.h || GRID) / GRID)}
+                    style={{ width: '100%' }}
+                    onChange={(e) => {
+                      const comprimento_m = Math.max(1, Number(e.target.value) || 1);
+                      const largura_m = shape.largura_m ?? Math.round((shape.w || GRID) / GRID);
+                      onChange({ largura_m, comprimento_m, w: largura_m * GRID, h: comprimento_m * GRID, area: largura_m * comprimento_m });
+                      const neededH = (shape.y || 0) + comprimento_m * GRID + GRID * 2;
+                      if (neededH > canvasSize.h) onCanvasSizeChange({ h: neededH });
+                    }} />
+                </label>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 700, marginBottom: 8, textAlign: 'right' }}>
+                = {(shape.largura_m ?? Math.round((shape.w || GRID) / GRID)) * (shape.comprimento_m ?? Math.round((shape.h || GRID) / GRID))} m²
+              </div>
+            </>
+          ) : (
+            <PRow label="Área (m²)">
+              <input type="number" min="0" value={shape.area ?? ''}
+                onChange={(e) => onChange({ area: Number(e.target.value) })} />
+            </PRow>
+          )}
           <PRow label="Quartos">
             <input type="number" min="0" value={shape.quartos ?? ''}
               onChange={(e) => onChange({ quartos: Number(e.target.value) })} />
@@ -665,6 +708,7 @@ function ReadOnlyFloorPlan({ shapes, apartments, canvasW, canvasH, onSelectAp })
           const apartment = isAp
             ? apartments?.find((item) => String(item.ap_id) === String(sh.ap_id)) || sh
             : null;
+          const displayShape = isAp && apartment ? { ...sh, status: apartment.status } : sh;
           return (
             <g key={sh.id || idx}
               onClick={isAp ? (event) => {
@@ -676,7 +720,7 @@ function ReadOnlyFloorPlan({ shapes, apartments, canvasW, canvasH, onSelectAp })
                 });
               } : undefined}
               style={{ cursor: isAp ? 'pointer' : 'default' }}>
-              <EditorShape shape={sh} selected={false} />
+              <EditorShape shape={displayShape} selected={false} />
             </g>
           );
         })}
@@ -702,6 +746,7 @@ export function FloorPlanEditor({
   onSelectAp,
   allAndares,
   onSelectAndar,
+  defaultApM2 = 700,
 }) {
   const [tool, setTool] = useState('ap');
   const [shapes, setShapes] = useState(() => normalizeFloorShapes(andar?.editor_shapes));
@@ -847,16 +892,17 @@ export function FloorPlanEditor({
   const finishPoly = (pts) => {
     if (pts.length < 3) { setPolyPoints([]); return; }
     const [cx, cy] = centroid(pts);
+    const apPolyArea = polygonArea(pts);
     const newShape = {
       id: `ap-poly-${Date.now()}`,
       kind: 'ap-poly',
       points: pts,
       center: [cx, cy],
       ap_id: nextApartmentId(shapes, andar?.numero ?? 1),
-      area: polygonArea(pts),
+      area: apPolyArea,
       quartos: 2,
       banheiros: 1,
-      preco_venda: null,
+      preco_venda: apPolyArea > 0 && defaultApM2 > 0 ? Math.round(defaultApM2 * apPolyArea) : null,
       preco_aluguel: null,
       tipo: 'venda',
       status: 'disponivel',
@@ -1083,16 +1129,21 @@ export function FloorPlanEditor({
         const cy = y + h / 2;
 
         if (drawing.kind === 'ap') {
+          const largura_m = Math.round(w / GRID);
+          const comprimento_m = Math.round(h / GRID);
+          const apArea = largura_m * comprimento_m;
           const newShape = {
             id: `ap-${Date.now()}`,
             kind: 'ap',
             x, y, w, h,
+            largura_m,
+            comprimento_m,
             center: [cx, cy],
             ap_id: nextApartmentId(shapes, andar?.numero ?? 1),
-            area: Math.round((w / GRID) * (h / GRID)),
+            area: apArea,
             quartos: 2,
             banheiros: 1,
-            preco_venda: null,
+            preco_venda: apArea > 0 && defaultApM2 > 0 ? Math.round(defaultApM2 * apArea) : null,
             preco_aluguel: null,
             tipo: 'venda',
             status: 'disponivel',

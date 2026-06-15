@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Building3DView } from './Building3DView';
 
 const STEP_INFO = 0;
@@ -28,13 +28,23 @@ function FootprintCanvas({ largura, profundidade, onChange }) {
       : null
   );
 
+  // Sync canvas shape when parent changes dimensions via inputs
+  const prevExternal = useRef({ largura, profundidade });
+  useEffect(() => {
+    const prev = prevExternal.current;
+    if (largura > 0 && profundidade > 0 && (largura !== prev.largura || profundidade !== prev.profundidade)) {
+      setShape({ x: SNAP_PX, y: SNAP_PX, w: largura * SCALE, h: profundidade * SCALE });
+    }
+    prevExternal.current = { largura, profundidade };
+  }, [largura, profundidade]);
+
   const getPos = (e) => {
-    const rect = svgRef.current.getBoundingClientRect();
-    const scaleX = CANVAS_W / rect.width;
-    const scaleY = CANVAS_H / rect.height;
-    const x = Math.max(0, Math.min(CANVAS_W, snapVal((e.clientX - rect.left) * scaleX)));
-    const y = Math.max(0, Math.min(CANVAS_H, snapVal((e.clientY - rect.top) * scaleY)));
-    return { x, y };
+    const svg = svgRef.current;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: Math.max(0, snapVal(svgPt.x)), y: Math.max(0, snapVal(svgPt.y)) };
   };
 
   const onMouseDown = (e) => {
@@ -77,31 +87,36 @@ function FootprintCanvas({ largura, profundidade, onChange }) {
   const wm = activeRect ? Math.round(activeRect.w / SCALE) : 0;
   const hm = activeRect ? Math.round(activeRect.h / SCALE) : 0;
 
-  // Grid lines
+  // Expand viewBox to fit shape when dimensions exceed default canvas size
+  const viewW = activeRect ? Math.max(CANVAS_W, activeRect.x + activeRect.w + SNAP_PX * 2) : CANVAS_W;
+  const viewH = activeRect ? Math.max(CANVAS_H, activeRect.y + activeRect.h + SNAP_PX * 2) : CANVAS_H;
+  const svgHeight = Math.min(CANVAS_H, Math.round(CANVAS_W * viewH / viewW));
+
+  // Grid lines (extend to full viewBox)
   const gridLines = [];
-  for (let x = 0; x <= CANVAS_W; x += GRID_PX) {
+  for (let x = 0; x <= viewW; x += GRID_PX) {
     gridLines.push(
-      <line key={`v${x}`} x1={x} y1={0} x2={x} y2={CANVAS_H}
+      <line key={`v${x}`} x1={x} y1={0} x2={x} y2={viewH}
         stroke={x % (GRID_PX * 2) === 0 ? '#cbd5e1' : '#e2e8f0'} strokeWidth="1" />
     );
   }
-  for (let y = 0; y <= CANVAS_H; y += GRID_PX) {
+  for (let y = 0; y <= viewH; y += GRID_PX) {
     gridLines.push(
-      <line key={`h${y}`} x1={0} y1={y} x2={CANVAS_W} y2={y}
+      <line key={`h${y}`} x1={0} y1={y} x2={viewW} y2={y}
         stroke={y % (GRID_PX * 2) === 0 ? '#cbd5e1' : '#e2e8f0'} strokeWidth="1" />
     );
   }
 
   // Scale labels (every 20m)
   const scaleLabels = [];
-  for (let x = GRID_PX * 2; x < CANVAS_W; x += GRID_PX * 2) {
+  for (let x = GRID_PX * 2; x < viewW; x += GRID_PX * 2) {
     scaleLabels.push(
-      <text key={`lx${x}`} x={x} y={CANVAS_H - 4} textAnchor="middle" fontSize={9} fill="#94a3b8">
+      <text key={`lx${x}`} x={x} y={viewH - 4} textAnchor="middle" fontSize={9} fill="#94a3b8">
         {x / SCALE}m
       </text>
     );
   }
-  for (let y = GRID_PX * 2; y < CANVAS_H; y += GRID_PX * 2) {
+  for (let y = GRID_PX * 2; y < viewH; y += GRID_PX * 2) {
     scaleLabels.push(
       <text key={`ly${y}`} x={6} y={y} textAnchor="middle" fontSize={9} fill="#94a3b8" dominantBaseline="middle">
         {y / SCALE}m
@@ -113,16 +128,16 @@ function FootprintCanvas({ largura, profundidade, onChange }) {
     <div className="fp-canvas-wrap">
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
+        viewBox={`0 0 ${viewW} ${viewH}`}
         width={CANVAS_W}
-        height={CANVAS_H}
+        height={svgHeight}
         style={{ display: 'block', maxWidth: '100%', cursor: 'crosshair', userSelect: 'none' }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={finalize}
         onMouseLeave={finalize}
       >
-        <rect x={0} y={0} width={CANVAS_W} height={CANVAS_H} fill="#f8fafc" />
+        <rect x={0} y={0} width={viewW} height={viewH} fill="#f8fafc" />
         {gridLines}
         {scaleLabels}
 
@@ -182,6 +197,34 @@ function FootprintCanvas({ largura, profundidade, onChange }) {
         Clique e arraste para definir o tamanho do prédio. Cada célula = 10m × 10m. Snap: 5m.
       </p>
     </div>
+  );
+}
+
+function DimInput({ value, onChange, placeholder = '0' }) {
+  const [raw, setRaw] = useState(value > 0 ? String(value) : '');
+
+  useEffect(() => {
+    setRaw(value > 0 ? String(value) : '');
+  }, [value]);
+
+  const commit = () => {
+    const n = parseInt(raw, 10);
+    if (n >= 5) onChange(n);
+    else { setRaw(value > 0 ? String(value) : ''); }
+  };
+
+  return (
+    <input
+      type="number"
+      min="5"
+      step="5"
+      value={raw}
+      placeholder={placeholder}
+      className="fp-dim-input"
+      onChange={(e) => setRaw(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.target.blur(); } }}
+    />
   );
 }
 
@@ -345,14 +388,25 @@ export function PredioWizard({ onConfirm, onCancel }) {
                 onChange={(w, h) => { setLargura(w); setProfundidade(h); }}
               />
 
-              {largura > 0 && profundidade > 0 && (
-                <div className="fp-result">
-                  <span className="fp-result-label">Dimensões:</span>
-                  <strong>{largura} × {profundidade}m</strong>
-                  <span className="fp-result-label" style={{ marginLeft: 16 }}>Grade interna:</span>
-                  <strong>{cols} × {rows} células</strong>
-                </div>
-              )}
+              <div className="fp-result">
+                <span className="fp-result-label">Largura (m)</span>
+                <DimInput
+                  value={largura}
+                  onChange={(v) => { setLargura(v); if (!profundidade) setProfundidade(10); }}
+                />
+                <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>×</span>
+                <span className="fp-result-label">Comprimento (m)</span>
+                <DimInput
+                  value={profundidade}
+                  onChange={(v) => { setProfundidade(v); if (!largura) setLargura(10); }}
+                />
+                {largura > 0 && profundidade > 0 && (
+                  <>
+                    <span className="fp-result-label" style={{ marginLeft: 8 }}>Grade:</span>
+                    <strong style={{ color: '#1e40af' }}>{cols} × {rows} células</strong>
+                  </>
+                )}
+              </div>
             </div>
           )}
 

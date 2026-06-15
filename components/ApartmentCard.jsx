@@ -4,6 +4,102 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fmtBRL } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 
+function ApPriceEditor({ preco, area, canEdit, defaultMode = 'm2', onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState(defaultMode);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef(null);
+
+  const total = Number(preco) || 0;
+  const precoM2 = area > 0 && total > 0 ? Math.round(total / area) : null;
+
+  const open = () => {
+    const m = defaultMode;
+    setMode(m);
+    setDraft(m === 'm2' ? (precoM2 != null ? String(precoM2) : '') : (total > 0 ? String(total) : ''));
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const cancel = () => setEditing(false);
+
+  const changeMode = (m) => {
+    setMode(m);
+    if (m === 'm2' && area > 0 && Number(draft) > 0 && mode === 'total') {
+      setDraft(String(Math.round(Number(draft) / area)));
+    } else if (m === 'total' && area > 0 && Number(draft) > 0 && mode === 'm2') {
+      setDraft(String(Math.round(Number(draft) * area)));
+    } else {
+      setDraft('');
+    }
+  };
+
+  const save = async () => {
+    const num = Number(draft) || 0;
+    const novoTotal = mode === 'm2' ? Math.round(num * (area || 1)) : num;
+    if (novoTotal === total) { cancel(); return; }
+    setSaving(true);
+    try {
+      await onSave(novoTotal);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const derivedNum = Number(draft) || 0;
+  const derivedLabel = mode === 'm2' && area > 0 && derivedNum > 0
+    ? `= ${fmtBRL(Math.round(derivedNum * area))} total`
+    : mode === 'total' && area > 0 && derivedNum > 0
+    ? `= ${fmtBRL(Math.round(derivedNum / area))}/m²`
+    : null;
+
+  if (editing) {
+    return (
+      <div className="apc-price-editor">
+        <div className="apc-pe-tabs">
+          <button className={'apc-pe-tab' + (mode === 'm2' ? ' active' : '')} onClick={() => changeMode('m2')}>Por m²</button>
+          <button className={'apc-pe-tab' + (mode === 'total' ? ' active' : '')} onClick={() => changeMode('total')}>Total</button>
+        </div>
+        <div className="apc-pe-row">
+          <span className="apc-pe-label">{mode === 'm2' ? 'R$/m²' : 'R$'}</span>
+          <input
+            ref={inputRef}
+            type="number"
+            min="0"
+            step={mode === 'm2' ? '10' : '1000'}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel(); }}
+            disabled={saving}
+            className="apc-pe-input"
+          />
+          <button className="apc-pe-save" onClick={save} disabled={saving}>{saving ? '...' : '✓'}</button>
+          <button className="apc-pe-cancel" onClick={cancel} disabled={saving}>✕</button>
+        </div>
+        {derivedLabel && <div className="apc-pe-derived">{derivedLabel}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="apc-price-display-row">
+      <div>
+        <strong>{fmtBRL(preco)}</strong>
+        {precoM2 && <span className="apc-price-m2-label"> · {fmtBRL(precoM2)}/m²</span>}
+      </div>
+      {canEdit && (
+        <button className="apc-pe-edit-btn" onClick={open} title="Editar preço">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+            <path d="M11.5 2.5a1.41 1.41 0 0 1 2 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 const AP_STATUS_COLORS = {
   disponivel: { bg: '#22c55e', soft: 'rgba(34,197,94,.12)', label: 'Disponível' },
   reservado:  { bg: '#f59e0b', soft: 'rgba(245,158,11,.12)', label: 'Reservado' },
@@ -26,7 +122,7 @@ function Metric({ label, value, suffix }) {
   );
 }
 
-export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, user }) {
+export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, onUpdatePrice, defaultPriceMode = 'm2', user }) {
   const [actionLoading, setActionLoading] = useState(false);
   const cardRef = useRef(null);
   const initialStyle = position
@@ -79,6 +175,7 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
   const isLocked = ap.status === 'vendido' || ap.status === 'alugado';
   const canManage = user && ['admin', 'gerente'].includes(user.role);
   const canReserve = user && ['admin', 'gerente', 'vendedor'].includes(user.role);
+  const canEditPrice = !!onUpdatePrice && canManage && !isLocked;
   const hasSalePrice = Number(ap.preco_venda) > 0 && ['venda', 'ambos'].includes(ap.tipo || 'venda');
   const hasRentPrice = Number(ap.preco_aluguel) > 0 && ['aluguel', 'ambos'].includes(ap.tipo);
 
@@ -125,12 +222,18 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
           <span className="apc-type">{TIPO_LABELS[ap.tipo] || 'Venda'}</span>
         </div>
 
-        {(hasSalePrice || hasRentPrice) && (
+        {(hasSalePrice || hasRentPrice || canEditPrice) && (
           <div className="apc-prices">
-            {hasSalePrice && (
+            {['venda', 'ambos'].includes(ap.tipo || 'venda') && (
               <div>
                 <span>Valor de venda</span>
-                <strong>{fmtBRL(ap.preco_venda)}</strong>
+                <ApPriceEditor
+                  preco={ap.preco_venda}
+                  area={ap.area}
+                  canEdit={canEditPrice}
+                  defaultMode={defaultPriceMode}
+                  onSave={onUpdatePrice}
+                />
               </div>
             )}
             {hasRentPrice && (
@@ -156,6 +259,13 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
               {ap.cliente.cpf_cnpj && <span>{formatCpfCnpj(ap.cliente.cpf_cnpj)}</span>}
               {ap.cliente.telefone && <span>{formatPhone(ap.cliente.telefone)}</span>}
             </div>
+          </section>
+        )}
+
+        {ap.vendedor && (
+          <section className="apc-client">
+            <div className="apc-section-label">VENDEDOR RESPONSÁVEL</div>
+            <strong>{ap.vendedor.nome}</strong>
           </section>
         )}
 

@@ -1047,6 +1047,29 @@
     font-family: 'JetBrains Mono', monospace;
     margin-top: 2px;
   }
+  .lcd-price-row { display: flex; align-items: flex-start; gap: 6px; }
+  .lcd-price-edit-btn {
+    margin-top: 4px; background: none; border: none; cursor: pointer;
+    color: var(--text-muted); padding: 2px 4px; border-radius: 4px;
+    display: flex; align-items: center; opacity: 0.5; transition: opacity .15s;
+  }
+  .lcd-price-edit-btn:hover { opacity: 1; color: var(--accent); }
+  .lcd-price-edit { display: flex; align-items: center; gap: 4px; margin: 4px 0 2px; }
+  .lcd-price-edit-label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+  .lcd-price-input {
+    width: 120px; font-size: 16px; font-weight: 700;
+    border: 1.5px solid var(--accent); border-radius: 6px;
+    padding: 3px 6px; background: var(--surface); color: var(--text);
+    font-variant-numeric: tabular-nums; outline: none;
+  }
+  .lcd-price-save, .lcd-price-cancel {
+    background: none; border: none; cursor: pointer;
+    font-size: 14px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+  }
+  .lcd-price-save { color: #22c55e; }
+  .lcd-price-save:hover { background: rgba(34,197,94,.12); }
+  .lcd-price-cancel { color: var(--text-muted); }
+  .lcd-price-cancel:hover { background: var(--surface-hover); }
   .lcd-specs {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -4553,7 +4576,7 @@ button, input, select, textarea { font: inherit; }
   border: 1px solid var(--border);
   border-radius: 11px;
 }
-.apc-prices div {
+.apc-prices > div {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -4567,6 +4590,72 @@ button, input, select, textarea { font: inherit; }
   font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
+/* ApPriceEditor */
+.apc-price-display-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.apc-price-m2-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.apc-pe-edit-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: .6;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.apc-pe-edit-btn:hover { opacity: 1; color: var(--accent); background: var(--surface-hover); }
+.apc-price-editor { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.apc-pe-tabs { display: flex; gap: 4px; }
+.apc-pe-tab {
+  flex: 1;
+  padding: 3px 0;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.apc-pe-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.apc-pe-row { display: flex; align-items: center; gap: 4px; }
+.apc-pe-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.apc-pe-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+}
+.apc-pe-save, .apc-pe-cancel {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.apc-pe-save { color: #22c55e; }
+.apc-pe-save:hover { background: rgba(34,197,94,.12); }
+.apc-pe-cancel { color: var(--text-muted); }
+.apc-pe-cancel:hover { background: var(--surface-hover); }
+.apc-pe-derived { font-size: 11px; color: var(--text-muted); padding-left: 2px; }
+
 .apc-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4826,8 +4915,22 @@ button, input, select, textarea { font: inherit; }
   font-size: 13px;
   flex-wrap: wrap;
 }
-.fp-result-label { color: var(--text-muted); }
+.fp-result-label { color: var(--text-muted); font-size: 12px; }
 .fp-result strong { color: var(--accent); font-weight: 800; }
+.fp-dim-input {
+  width: 72px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  text-align: center;
+  outline: none;
+}
+.fp-dim-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(50,136,224,.15); }
 
 /* ───── Relatórios & Resultados (gerente/admin) ───── */
 .rel-page .dash-header { margin-bottom: 18px; }
@@ -5125,4 +5228,130 @@ button, input, select, textarea { font: inherit; }
 }
 .rel-result-line b { color: var(--text); }
 .rel-table { width: 100%; }
+
+/* ── Planos de assinatura ──────────────────────────────────────────────────── */
+.planos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding-bottom: 40px;
+}
+.plano-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+.plano-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); transform: translateY(-2px); }
+.plano-card-destaque {
+  border: 2px solid var(--plano-cor, var(--accent));
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+.plano-card-atual { border-color: #22c55e; }
+.plano-badge-top {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--plano-cor, var(--accent));
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 14px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.plano-badge-atual { background: #22c55e; }
+.plano-nome {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--plano-cor, var(--accent));
+  text-transform: uppercase;
+}
+.plano-preco { display: flex; align-items: baseline; gap: 4px; }
+.plano-preco-val { font-size: 2rem; font-weight: 800; color: var(--text); line-height: 1; }
+.plano-preco-per { font-size: 0.875rem; color: var(--text-muted); }
+.plano-preco-anual { font-size: 0.8rem; color: var(--text-muted); margin-top: -8px; }
+.plano-desc { font-size: 0.875rem; color: var(--text-muted); line-height: 1.5; margin: 0; }
+.plano-limites { display: flex; flex-direction: column; gap: 6px; }
+.plano-limite-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.plano-limite-item svg { color: var(--plano-cor, var(--accent)); flex-shrink: 0; }
+.plano-recursos { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 14px; }
+.plano-recursos li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+.plano-recursos li svg { color: #22c55e; flex-shrink: 0; }
+.plano-btn {
+  margin-top: auto;
+  padding: 11px 0;
+  background: var(--plano-cor, var(--accent));
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.plano-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.plano-btn:not(:disabled):hover { opacity: 0.88; }
+.plano-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.plano-modal {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 28px 32px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.plano-modal h3 { margin: 0 0 12px; font-size: 1.125rem; color: var(--text); }
+.plano-modal p { margin: 0 0 10px; color: var(--text-muted); font-size: 0.9375rem; line-height: 1.5; }
+.plano-modal-btns { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+.plano-modal-cancel {
+  padding: 10px 20px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.plano-modal-cancel:hover { background: var(--surface-hover); }
+.plano-modal-confirm {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+.plano-modal-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
 .rel-card .rel-table th { white-space: nowrap; }

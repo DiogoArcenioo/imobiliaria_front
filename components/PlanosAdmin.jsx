@@ -16,6 +16,7 @@ const EMPTY_FORM = {
   duracao_trial_dias: "7",
   max_usuarios: "",
   max_loteamentos: "",
+  max_predios: "",
   destaque: false,
   ordem: "0",
   cor: "#3288e0",
@@ -188,6 +189,7 @@ function PlanoCard({ plano, selected, onClick, onToggleAtivo, toggling }) {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8, fontSize: "0.75rem", color: "#6b7280" }}>
         <span title="Usuários">👤 {plano.max_usuarios ?? "∞"} usuários</span>
         <span title="Loteamentos">🏘️ {plano.max_loteamentos ?? "∞"} loteamentos</span>
+        <span title="Prédios">🏢 {plano.max_predios ?? "∞"} prédios</span>
         <span title="Duração">📅 {plano.duracao_dias}d</span>
         <span title="Trial">🧪 {plano.duracao_trial_dias}d trial</span>
       </div>
@@ -267,6 +269,7 @@ export function PlanosAdmin() {
           duracao_trial_dias: String(plano.duracao_trial_dias ?? 7),
           max_usuarios: plano.max_usuarios != null ? String(plano.max_usuarios) : "",
           max_loteamentos: plano.max_loteamentos != null ? String(plano.max_loteamentos) : "",
+          max_predios: plano.max_predios != null ? String(plano.max_predios) : "",
           destaque: plano.destaque ?? false,
           ordem: String(plano.ordem ?? 0),
           cor: plano.cor ?? "#3288e0",
@@ -303,6 +306,7 @@ export function PlanosAdmin() {
       duracao_trial_dias: String(plano.duracao_trial_dias ?? 7),
       max_usuarios: plano.max_usuarios != null ? String(plano.max_usuarios) : "",
       max_loteamentos: plano.max_loteamentos != null ? String(plano.max_loteamentos) : "",
+      max_predios: plano.max_predios != null ? String(plano.max_predios) : "",
       destaque: plano.destaque ?? false,
       ordem: String(plano.ordem ?? 0),
       cor: plano.cor ?? "#3288e0",
@@ -326,6 +330,7 @@ export function PlanosAdmin() {
       duracao_trial_dias: Number(form.duracao_trial_dias) || 7,
       max_usuarios: form.max_usuarios !== "" ? Number(form.max_usuarios) : null,
       max_loteamentos: form.max_loteamentos !== "" ? Number(form.max_loteamentos) : null,
+      max_predios: form.max_predios !== "" ? Number(form.max_predios) : null,
       destaque: form.destaque,
       ordem: Number(form.ordem) || 0,
       cor: form.cor || "#3288e0",
@@ -450,12 +455,15 @@ export function PlanosAdmin() {
             </div>
 
             {/* Limites */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
               <FieldGroup label="Max usuários" hint="vazio = ilimitado">
                 <input type="number" min="1" value={form.max_usuarios} onChange={(e) => setForm((p) => ({ ...p, max_usuarios: e.target.value }))} placeholder="∞" style={inputStyle} />
               </FieldGroup>
               <FieldGroup label="Max loteamentos" hint="vazio = ilimitado">
                 <input type="number" min="1" value={form.max_loteamentos} onChange={(e) => setForm((p) => ({ ...p, max_loteamentos: e.target.value }))} placeholder="∞" style={inputStyle} />
+              </FieldGroup>
+              <FieldGroup label="Max prédios" hint="vazio = ilimitado">
+                <input type="number" min="1" value={form.max_predios} onChange={(e) => setForm((p) => ({ ...p, max_predios: e.target.value }))} placeholder="∞" style={inputStyle} />
               </FieldGroup>
             </div>
 
