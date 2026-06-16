@@ -1546,6 +1546,8 @@
   }
   .ed-svg-select [data-shape-id] { cursor: grab; }
   .ed-svg-select [data-shape-id]:active { cursor: grabbing; }
+  .ed-canvas-panning, .ed-canvas-panning * { cursor: grab !important; }
+  .ed-canvas-panning:active, .ed-canvas-panning:active * { cursor: grabbing !important; }
   .ed-poly-progress polygon { pointer-events: none; }
 
   .ed-statusbar {
@@ -3482,6 +3484,52 @@ button, input, select, textarea { font: inherit; }
 .ed-tbtn-ai:hover:not(:disabled) {
   background: linear-gradient(135deg, #7c4dff 0%, #b36ff5 100%) !important;
   border-color: #7c4dff !important;
+}
+
+/* ── Planta de fundo (mesa de luz) ──────────────────────────────────────── */
+.ed-bg-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 0 8px 0 7px;
+  height: 30px;
+  color: var(--text-dim);
+}
+.ed-bg-slider {
+  width: 80px;
+  height: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.ed-bg-pct {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-dim);
+  min-width: 28px;
+  text-align: right;
+}
+.ed-bg-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  opacity: 0.7;
+}
+.ed-bg-remove:hover { opacity: 1; color: #e84040; }
+.ed-tbtn-bg-editing {
+  background: rgba(50,136,224,0.12);
+  border-color: rgba(50,136,224,0.5);
+  color: #3288e0;
+}
+.ed-tbtn-bg-editing:hover {
+  background: rgba(50,136,224,0.2);
 }
 
 .ai-modal-backdrop {

@@ -18,6 +18,19 @@ const ROAD_WIDTH_M = 15;
 const ROAD_WIDTH = ROAD_WIDTH_M * UNITS_PER_METER;
 const ROAD_DRAG_THRESHOLD = 6;
 const ROAD_NODE_SNAP_RADIUS = 24;
+const LOTE_SNAP_DIST = 18;
+
+function getLoteBBox(shape) {
+  if (shape.kind === 'lote-poly') {
+    const xs = shape.points.map(([x]) => x);
+    const ys = shape.points.map(([, y]) => y);
+    return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+  }
+  if (shape.kind === 'lote') {
+    return { x1: shape.x, y1: shape.y, x2: shape.x + (shape.w || 0), y2: shape.y + (shape.h || 0) };
+  }
+  return null;
+}
 
 function clampCanvasSize(width, height) {
   return {
@@ -474,7 +487,7 @@ function loteamentoToShapes(lt) {
 
 const TOOL_LIST = [
   { id: 'select',   label: 'Selecionar',  shortcut: 'V', group: 'core' },
-  { id: 'pan',      label: 'Navegar',     shortcut: 'H', group: 'core' },
+  { id: 'pan',      label: 'Navegar',     shortcut: 'Space', group: 'core' },
   { id: 'lote',     label: 'Lote',        shortcut: 'L', group: 'draw', primary: true },
   { id: 'lote-poly',label: 'Lote irreg.', shortcut: 'P', group: 'draw' },
   { id: 'rua',      label: 'Rua',         shortcut: 'R', group: 'draw' },
@@ -549,8 +562,19 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
   const [selectedIds, setSelectedIds] = useStateEd([]);   // multi-select IDs
   const [boxSelect, setBoxSelect] = useStateEd(null);      // { startX, startY, curX, curY }
   const [selectedNodeKeys, setSelectedNodeKeys] = useStateEd(new Set()); // "shapeId:nodeIdx"
+  const [bgImage, setBgImage] = useStateEd(null);
+  const [bgOpacity, setBgOpacity] = useStateEd(0.35);
+  const [bgTransform, setBgTransform] = useStateEd({ x: 0, y: 0, w: 0, h: 0 });
+  const [bgHistory, setBgHistory] = useStateEd([]);
+  const [bgEditing, setBgEditing] = useStateEd(false); // false = travada (desenho livre); true = modo edição
 
   const svgRef = useRefEd(null);
+  const bgInputRef = useRefEd(null);
+  const bgDragRef = useRefEd(null); // { type, startX, startY, origTransform }
+  const toolRef = useRefEd(tool);     // always-current tool, for passive wheel handler
+  const canvasRef = useRefEd(null);
+  const tempPanRef = useRefEd(false); // Space held: temporary pan without losing draft
+  const [tempPanning, setTempPanning] = useStateEd(false); // for cursor only
   const isPanning = useRefEd(false);
   const panStart = useRefEd({ x: 0, y: 0, panX: 0, panY: 0 });
   const dragShape = useRefEd(null); // { ids[], origins[], startX, startY, didPush }
@@ -586,10 +610,15 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
   const screenToSvg = (clientX, clientY) => {
     const svg = svgRef.current;
     if (!svg) return [0, 0];
-    const rect = svg.getBoundingClientRect();
-    const xR = (clientX - rect.left) / rect.width;
-    const yR = (clientY - rect.top) / rect.height;
-    return [xR * canvasSize.width, yR * canvasSize.height];
+    try {
+      const pt = svg.createSVGPoint();
+      pt.x = clientX;
+      pt.y = clientY;
+      const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+      return [svgP.x, svgP.y];
+    } catch {
+      return [0, 0];
+    }
   };
 
   const pushHistory = useCallbackEd(() => {
@@ -698,6 +727,31 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
     return true;
   };
 
+  const pasteAdjacentRight = () => {
+    if (tool !== 'select' || !clipboardShapes.current.length) return false;
+
+    // Compute combined bbox of clipboard shapes
+    let bx1 = Infinity, bx2 = -Infinity;
+    for (const shape of clipboardShapes.current) {
+      const bb = getLoteBBox(shape);
+      if (bb) { bx1 = Math.min(bx1, bb.x1); bx2 = Math.max(bx2, bb.x2); }
+      else if ('x' in shape && 'w' in shape) { bx1 = Math.min(bx1, shape.x); bx2 = Math.max(bx2, shape.x + shape.w); }
+    }
+    if (bx1 === Infinity) return false;
+
+    const dx = bx2 - bx1; // shift right by full bbox width → left edge touches right edge of source
+    pushHistory();
+    const pasted = createCopiedShapes(clipboardShapes.current, dx, 0);
+    const pastedIds = pasted.map((s) => s.id);
+    clipboardShapes.current = pasted.map((s) => JSON.parse(JSON.stringify(s)));
+    setShapes((current) => [...current, ...pasted]);
+    setSelectedIds(pastedIds);
+    setSelectedId(pastedIds[pastedIds.length - 1] || null);
+    setSelectedNodeKeys(new Set());
+    setTool('select');
+    return true;
+  };
+
   const deleteShape = (id) => {
     pushHistory();
     setShapes((s) => s.filter((sh) => sh.id !== id));
@@ -765,6 +819,12 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
   // ── mouse handlers ─────────────────────────────────────────────────────
   const onMouseDown = (e) => {
     if (e.button !== 0) return;
+    // Space held: temporary pan without touching any drawing draft
+    if (tempPanRef.current) {
+      isPanning.current = true;
+      panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      return;
+    }
     const target = e.target;
     const [rawX, rawY] = screenToSvg(e.clientX, e.clientY);
     let x = snapV(rawX), y = snapV(rawY);
@@ -945,6 +1005,36 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
 
   const onMouseMoveSvg = (e) => {
     const [rawX, rawY] = screenToSvg(e.clientX, e.clientY);
+
+    if (bgDragRef.current) {
+      const { type, startX, startY, origTransform: o } = bgDragRef.current;
+      const dx = rawX - startX;
+      const dy = rawY - startY;
+      const ratio = o.ratio || 1;
+      let next;
+      if (type === 'move') {
+        next = { ...o, x: o.x + dx, y: o.y + dy };
+      } else if (type === 'se') {
+        const newW = Math.max(60, o.w + dx);
+        const newH = Math.round(newW / ratio);
+        next = { ...o, w: newW, h: newH };
+      } else if (type === 'sw') {
+        const newW = Math.max(60, o.w - dx);
+        const newH = Math.round(newW / ratio);
+        next = { ...o, x: o.x + o.w - newW, w: newW, h: newH };
+      } else if (type === 'ne') {
+        const newW = Math.max(60, o.w + dx);
+        const newH = Math.round(newW / ratio);
+        next = { ...o, y: o.y + o.h - newH, w: newW, h: newH };
+      } else if (type === 'nw') {
+        const newW = Math.max(60, o.w - dx);
+        const newH = Math.round(newW / ratio);
+        next = { ...o, x: o.x + o.w - newW, y: o.y + o.h - newH, w: newW, h: newH };
+      }
+      if (next) setBgTransform(next);
+      return;
+    }
+
     let x = snapV(rawX), y = snapV(rawY);
     if (tool === 'rua' && !roadSegmentDrag.current) {
       const resolved = resolveRoadPoint(rawX, rawY);
@@ -981,8 +1071,45 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
     }
     if (dragShape.current) {
       const drag = dragShape.current;
-      const dx = snap ? Math.round((rawX - drag.startX) / GRID) * GRID : Math.round(rawX - drag.startX);
-      const dy = snap ? Math.round((rawY - drag.startY) / GRID) * GRID : Math.round(rawY - drag.startY);
+      let dx = snap ? Math.round((rawX - drag.startX) / GRID) * GRID : Math.round(rawX - drag.startX);
+      let dy = snap ? Math.round((rawY - drag.startY) / GRID) * GRID : Math.round(rawY - drag.startY);
+
+      // Snap dragged lotes to edges of neighboring lotes
+      {
+        const dragIds = drag.ids || [];
+        const origins = drag.origins || [];
+        let dX1 = Infinity, dY1 = Infinity, dX2 = -Infinity, dY2 = -Infinity;
+        for (const origin of origins) {
+          if (origin.kind !== 'lote' && origin.kind !== 'lote-poly') continue;
+          const bb = getLoteBBox(moveShapeBy(origin, dx, dy));
+          if (!bb) continue;
+          if (bb.x1 < dX1) dX1 = bb.x1; if (bb.y1 < dY1) dY1 = bb.y1;
+          if (bb.x2 > dX2) dX2 = bb.x2; if (bb.y2 > dY2) dY2 = bb.y2;
+        }
+        if (dX1 !== Infinity) {
+          let bDx = 0, bDy = 0, minX = LOTE_SNAP_DIST + 1, minY = LOTE_SNAP_DIST + 1;
+          for (const s of shapes) {
+            if (dragIds.includes(s.id)) continue;
+            if (s.kind !== 'lote' && s.kind !== 'lote-poly') continue;
+            const bb = getLoteBBox(s);
+            if (!bb) continue;
+            const yOvlp = dY1 <= bb.y2 + LOTE_SNAP_DIST && dY2 >= bb.y1 - LOTE_SNAP_DIST;
+            const xOvlp = dX1 <= bb.x2 + LOTE_SNAP_DIST && dX2 >= bb.x1 - LOTE_SNAP_DIST;
+            if (yOvlp) {
+              for (const [a, b, adj] of [[dX1, bb.x2, bb.x2 - dX1], [dX2, bb.x1, bb.x1 - dX2], [dX1, bb.x1, bb.x1 - dX1], [dX2, bb.x2, bb.x2 - dX2]]) {
+                const d = Math.abs(a - b); if (d < minX) { minX = d; bDx = adj; }
+              }
+            }
+            if (xOvlp) {
+              for (const [a, b, adj] of [[dY1, bb.y2, bb.y2 - dY1], [dY2, bb.y1, bb.y1 - dY2], [dY1, bb.y1, bb.y1 - dY1], [dY2, bb.y2, bb.y2 - dY2]]) {
+                const d = Math.abs(a - b); if (d < minY) { minY = d; bDy = adj; }
+              }
+            }
+          }
+          if (minX <= LOTE_SNAP_DIST) dx += bDx;
+          if (minY <= LOTE_SNAP_DIST) dy += bDy;
+        }
+      }
 
       if (dx || dy) {
         if (!drag.didPush) {
@@ -1017,6 +1144,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
   };
 
   const onMouseUp = () => {
+    if (bgDragRef.current) { bgDragRef.current = null; return; }
     if (isPanning.current) {
       isPanning.current = false;
     }
@@ -1150,6 +1278,12 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
       undoRoadDraftPoint();
       return;
     }
+    if (bgEditing && bgHistory.length) {
+      const prev = bgHistory[bgHistory.length - 1];
+      setBgTransform(prev);
+      setBgHistory((h) => h.slice(0, -1));
+      return;
+    }
     undo();
   };
 
@@ -1178,8 +1312,21 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
 
   // ── keyboard ───────────────────────────────────────────────────────────
   useEffectEd(() => {
-    const onKey = (e) => {
+    toolRef.current = tool;
+  }, [tool]);
+
+  useEffectEd(() => {
+    const onKeyDown = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      // Space: hold-to-pan without losing drawing state
+      if (e.key === ' ' && !e.repeat) {
+        e.preventDefault();
+        tempPanRef.current = true;
+        setTempPanning(true);
+        return;
+      }
+
       const modKey = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
 
@@ -1190,6 +1337,11 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
 
       if (modKey && key === 'v') {
         if (pasteCopiedShapes()) e.preventDefault();
+        return;
+      }
+
+      if (modKey && key === 'b') {
+        if (pasteAdjacentRight()) e.preventDefault();
         return;
       }
 
@@ -1228,9 +1380,36 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
         if (t) activateTool(t.id);
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+
+    const onKeyUp = (e) => {
+      if (e.key === ' ') {
+        tempPanRef.current = false;
+        setTempPanning(false);
+        isPanning.current = false;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, [polyPoints, lagoPolyPoints, pracaPolyPoints, selectedId, selectedIds, shapes, roadDraft, tool, defaultQuadra]);
+
+  // ── scroll-wheel zoom (select tool only) ───────────────────────────────
+  useEffectEd(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (toolRef.current !== 'select') return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      setZoom((z) => Math.min(2.5, Math.max(0.25, z * factor)));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   // ── compute stats ──────────────────────────────────────────────────────
   const stats = useMemoEd(() => {
@@ -1257,7 +1436,7 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
     activeNodeDrag.current = null;
   };
 
-  const handleAiGenerate = (generatedShapes) => {
+  const handleAiGenerate = (generatedShapes, canvas) => {
     const withIds = generatedShapes.map((shape, idx) => ({
       ...shape,
       id: `ai-${Date.now()}-${idx}`,
@@ -1265,6 +1444,9 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
     setHistory((h) => [...h, shapes]);
     setShapes(withIds);
     setSelectedId(null);
+    if (canvas?.width && canvas?.height) {
+      setCanvasSize({ width: canvas.width, height: canvas.height });
+    }
   };
 
   // ── render ─────────────────────────────────────────────────────────────
@@ -1319,7 +1501,104 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
             </svg>
             Gerar com IA
           </button>
-          <button className="ed-tbtn" onClick={handleUndo} disabled={!history.length && !roadDraft} title="Desfazer (Ctrl+Z)">
+
+          {/* Imagem de fundo / mesa de luz */}
+          <input
+            ref={bgInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const url = URL.createObjectURL(file);
+              const img = new window.Image();
+              img.onload = () => {
+                const ratio = img.naturalWidth / img.naturalHeight;
+                const canW = canvasSize.width;
+                const canH = canvasSize.height;
+                let w = canW, h = canW / ratio;
+                if (h > canH) { h = canH; w = canH * ratio; }
+                w = Math.round(w); h = Math.round(h);
+                setBgTransform({
+                  x: Math.round((canW - w) / 2),
+                  y: Math.round((canH - h) / 2),
+                  w, h, ratio,
+                });
+              };
+              img.src = url;
+              setBgImage(url);
+              setBgHistory([]);
+              setBgEditing(true);
+              e.target.value = '';
+            }}
+          />
+          {bgImage ? (
+            <>
+              <button
+                className={`ed-tbtn${bgEditing ? ' ed-tbtn-bg-editing' : ''}`}
+                onClick={() => { if (bgEditing) setBgHistory([]); setBgEditing(!bgEditing); }}
+                title={bgEditing ? 'Travar fundo e voltar ao desenho' : 'Selecionar fundo para mover/redimensionar'}
+              >
+                {bgEditing ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <rect x="5" y="7" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+                      <path d="M6 7V5a2 2 0 0 1 4 0v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                    </svg>
+                    Travar fundo
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                      <circle cx="5.5" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.1"/>
+                      <path d="M1 11l4-3 3 2.5 2.5-2 4.5 3.5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+                    </svg>
+                    Editar fundo
+                  </>
+                )}
+              </button>
+              <div className="ed-bg-controls">
+                <input
+                  type="range"
+                  className="ed-bg-slider"
+                  min="0.05"
+                  max="0.9"
+                  step="0.05"
+                  value={bgOpacity}
+                  onChange={(e) => setBgOpacity(Number(e.target.value))}
+                  title={`Opacidade: ${Math.round(bgOpacity * 100)}%`}
+                />
+                <span className="ed-bg-pct">{Math.round(bgOpacity * 100)}%</span>
+                <button
+                  className="ed-bg-remove"
+                  onClick={() => { setBgImage(null); setBgEditing(false); }}
+                  title="Remover imagem de fundo"
+                >
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              className="ed-tbtn"
+              onClick={() => bgInputRef.current?.click()}
+              title="Carregar planta de fundo para desenhar por cima"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                <circle cx="5.5" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.1"/>
+                <path d="M1 11l4-3 3 2.5 2.5-2 4.5 3.5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+                <path d="M11 1v4M9 3l2-2 2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Planta de fundo
+            </button>
+          )}
+
+          <button className="ed-tbtn" onClick={handleUndo} disabled={!history.length && !roadDraft && !(bgEditing && bgHistory.length)} title="Desfazer (Ctrl+Z)">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 8H3l3-3 3 3H7a4 4 0 0 1 4 4 4 4 0 0 1-4 4H5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round"/></svg>
             Desfazer
           </button>
@@ -1447,12 +1726,13 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
 
         {/* Canvas */}
         <div
-          className="ed-canvas"
+          ref={canvasRef}
+          className={`ed-canvas${tempPanning ? ' ed-canvas-panning' : ''}`}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMoveSvg}
           onMouseUp={onMouseUp}
           onMouseLeave={() => {
-            if (isPanning.current || dragShape.current || roadSegmentDrag.current || activeNodeDrag.current || boxSelect) onMouseUp();
+            if (isPanning.current || dragShape.current || roadSegmentDrag.current || activeNodeDrag.current || boxSelect || bgDragRef.current) onMouseUp();
             setRoadSnapTarget(null);
           }}
           onDoubleClick={() => finishActiveDraft()}
@@ -1513,6 +1793,19 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
             <rect width={canvasSize.width} height={canvasSize.height} fill="url(#ed-fundo)" />
             <rect width={canvasSize.width} height={canvasSize.height} fill="url(#ed-grid)" />
             <rect width={canvasSize.width} height={canvasSize.height} fill="url(#ed-grid-big)" />
+
+            {bgImage && (
+              <image
+                href={bgImage}
+                x={bgTransform.x}
+                y={bgTransform.y}
+                width={bgTransform.w}
+                height={bgTransform.h}
+                opacity={bgOpacity}
+                preserveAspectRatio="none"
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
 
             <RoadSurfaceLayer shapes={shapes} selectedId={selectedId} selectedIds={selectedIds} />
 
@@ -1607,6 +1900,55 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
                 <line x1="0" y1={mousePos[1]} x2={canvasSize.width} y2={mousePos[1]} stroke="rgba(0,0,0,0.15)" strokeWidth="0.5" strokeDasharray="3 3" />
               </g>
             )}
+
+            {/* Bg image handles */}
+            {bgImage && bgEditing && bgTransform.w > 0 && (() => {
+              const { x, y, w, h } = bgTransform;
+              const INS = 24; // handles inset from corner — always inside viewBox
+              const startDrag = (type) => (e) => {
+                e.stopPropagation();
+                const [sx, sy] = screenToSvg(e.clientX, e.clientY);
+                setBgHistory((prev) => [...prev.slice(-30), { ...bgTransform }]);
+                bgDragRef.current = { type, startX: sx, startY: sy, origTransform: { ...bgTransform } };
+              };
+              return (
+                <g>
+                  {/* Visual dashed border */}
+                  <rect x={x} y={y} width={w} height={h}
+                    fill="none" stroke="rgba(50,136,224,0.7)" strokeWidth="1.5" strokeDasharray="10 6"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                  {/* Interior move hitbox — full area clickable when in edit mode */}
+                  <rect x={x} y={y} width={w} height={h}
+                    fill="transparent"
+                    style={{ pointerEvents: 'all', cursor: 'move' }}
+                    onMouseDown={startDrag('move')}
+                  />
+                  {/* Corner handles — inset so they're always inside the viewBox */}
+                  {[
+                    { type: 'nw', cx: x + INS,     cy: y + INS,     cursor: 'nwse-resize' },
+                    { type: 'ne', cx: x + w - INS,  cy: y + INS,     cursor: 'nesw-resize' },
+                    { type: 'sw', cx: x + INS,     cy: y + h - INS,  cursor: 'nesw-resize' },
+                    { type: 'se', cx: x + w - INS,  cy: y + h - INS, cursor: 'nwse-resize' },
+                  ].map(({ type, cx, cy, cursor }) => (
+                    <g key={type} style={{ pointerEvents: 'all', cursor }} onMouseDown={startDrag(type)}>
+                      <circle cx={cx} cy={cy} r={14} fill="rgba(50,136,224,0.15)" />
+                      <circle cx={cx} cy={cy} r={8} fill="#fff" stroke="#3288e0" strokeWidth="2.5" />
+                      <path
+                        d={
+                          type === 'nw' ? `M${cx-5} ${cy} L${cx-5} ${cy-5} L${cx} ${cy-5}` :
+                          type === 'ne' ? `M${cx+5} ${cy} L${cx+5} ${cy-5} L${cx} ${cy-5}` :
+                          type === 'sw' ? `M${cx-5} ${cy} L${cx-5} ${cy+5} L${cx} ${cy+5}` :
+                                          `M${cx+5} ${cy} L${cx+5} ${cy+5} L${cx} ${cy+5}`
+                        }
+                        fill="none" stroke="#3288e0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                    </g>
+                  ))}
+                </g>
+              );
+            })()}
 
             {/* Node handles — always visible in select mode for all shapes */}
             {tool === 'select' && (

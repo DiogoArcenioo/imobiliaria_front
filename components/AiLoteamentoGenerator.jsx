@@ -3,8 +3,12 @@
 import { useRef, useState } from "react";
 import { gerarLoteamentoIA } from "../lib/api";
 
-const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,image/gif";
-const MAX_SIZE_MB = 15;
+const ACCEPTED_TYPES = "application/pdf,image/jpeg,image/png,image/webp,image/gif";
+const MAX_SIZE_MB = 32;
+
+function isPdf(f) {
+  return f?.type === "application/pdf";
+}
 
 export function AiLoteamentoGenerator({ onGenerate, onClose }) {
   const [file, setFile] = useState(null);
@@ -16,18 +20,22 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
 
   function handleFile(f) {
     if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      setError("Apenas imagens são suportadas (JPEG, PNG, WebP).");
+    const allowed = f.type.startsWith("image/") || f.type === "application/pdf";
+    if (!allowed) {
+      setError("Apenas PDF ou imagens são suportados (JPEG, PNG, WebP).");
       return;
     }
     if (f.size > MAX_SIZE_MB * 1024 * 1024) {
-      setError(`A imagem deve ter no máximo ${MAX_SIZE_MB} MB.`);
+      setError(`O arquivo deve ter no máximo ${MAX_SIZE_MB} MB.`);
       return;
     }
     setError("");
     setFile(f);
-    const url = URL.createObjectURL(f);
-    setPreview(url);
+    if (isPdf(f)) {
+      setPreview(null);
+    } else {
+      setPreview(URL.createObjectURL(f));
+    }
   }
 
   function handleInputChange(e) {
@@ -40,20 +48,51 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
     handleFile(e.dataTransfer.files?.[0]);
   }
 
+  async function compressIfNeeded(f) {
+    if (isPdf(f)) return f; // PDFs não precisam de compressão
+    const MAX_DIM = 7500;
+    const MAX_BYTES = 4.5 * 1024 * 1024;
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(f);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const dimRatio = Math.min(MAX_DIM / img.width, MAX_DIM / img.height, 1);
+        const sizeRatio = f.size > MAX_BYTES ? Math.sqrt(MAX_BYTES / f.size) * 0.85 : 1;
+        const ratio = Math.min(dimRatio, sizeRatio);
+        if (ratio >= 1) { resolve(f); return; }
+        const w = Math.round(img.width * ratio);
+        const h = Math.round(img.height * ratio);
+        const cv = document.createElement("canvas");
+        cv.width = w;
+        cv.height = h;
+        cv.getContext("2d").drawImage(img, 0, 0, w, h);
+        cv.toBlob(
+          (blob) => resolve(new File([blob], f.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" })),
+          "image/jpeg",
+          0.88
+        );
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
   async function handleGenerate() {
     if (!file) return;
     setLoading(true);
     setError("");
     try {
-      const result = await gerarLoteamentoIA(file);
+      const fileToSend = await compressIfNeeded(file);
+      const result = await gerarLoteamentoIA(fileToSend);
       if (!result?.shapes?.length) {
-        setError("A IA não identificou elementos no loteamento. Tente com uma imagem mais clara.");
+        setError("A IA não identificou elementos no loteamento. Tente com um arquivo mais claro.");
         return;
       }
-      onGenerate(result.shapes);
+      onGenerate(result.shapes, result.canvas);
       onClose();
     } catch (err) {
-      setError(err.message || "Erro ao processar imagem com IA.");
+      setError(err.message || "Erro ao processar arquivo com IA.");
     } finally {
       setLoading(false);
     }
@@ -65,6 +104,8 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
     setError("");
     if (inputRef.current) inputRef.current.value = "";
   }
+
+  const fileIsSelected = !!file;
 
   return (
     <div className="ai-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -78,7 +119,7 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
               Gerar loteamento com IA
             </h2>
             <p className="ai-modal-sub">
-              Faça upload de uma imagem aérea, satélite ou mapa do terreno. A IA identificará os lotes, ruas e áreas verdes automaticamente.
+              Faça upload do PDF ou imagem da planta do terreno. A IA identificará os lotes, ruas e áreas verdes automaticamente.
             </p>
           </div>
           <button className="ai-modal-close" onClick={onClose} disabled={loading}>
@@ -89,11 +130,11 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
         </div>
 
         <div
-          className={"ai-dropzone" + (dragOver ? " ai-dropzone-active" : "") + (preview ? " ai-dropzone-filled" : "")}
+          className={"ai-dropzone" + (dragOver ? " ai-dropzone-active" : "") + (fileIsSelected ? " ai-dropzone-filled" : "")}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
-          onClick={() => !preview && inputRef.current?.click()}
+          onClick={() => !fileIsSelected && inputRef.current?.click()}
         >
           <input
             ref={inputRef}
@@ -103,9 +144,21 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
             onChange={handleInputChange}
           />
 
-          {preview ? (
+          {fileIsSelected ? (
             <div className="ai-preview-wrap">
-              <img src={preview} alt="Preview" className="ai-preview-img" />
+              {preview ? (
+                <img src={preview} alt="Preview" className="ai-preview-img" />
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 80 }}>
+                  <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                    <rect x="8" y="4" width="26" height="34" rx="3" stroke="currentColor" strokeWidth="1.8" fill="none"/>
+                    <path d="M28 4v10h10" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+                    <path d="M14 20h20M14 26h14M14 32h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                    <rect x="28" y="30" width="12" height="14" rx="2" fill="currentColor" opacity="0.15"/>
+                    <text x="34" y="41" textAnchor="middle" fontSize="5" fill="currentColor" fontWeight="bold">PDF</text>
+                  </svg>
+                </div>
+              )}
               <div className="ai-preview-info">
                 <span className="ai-preview-name">{file.name}</span>
                 <span className="ai-preview-size">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
@@ -123,8 +176,8 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
                 <rect x="4" y="4" width="32" height="32" rx="6" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3"/>
                 <path d="M20 14v12M14 20l6-6 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              <p className="ai-dropzone-label">Arraste uma imagem ou <span>clique para selecionar</span></p>
-              <p className="ai-dropzone-hint">JPEG, PNG ou WebP · Máximo {MAX_SIZE_MB} MB</p>
+              <p className="ai-dropzone-label">Arraste o arquivo ou <span>clique para selecionar</span></p>
+              <p className="ai-dropzone-hint">PDF (recomendado) · JPEG, PNG ou WebP · Máx. {MAX_SIZE_MB} MB</p>
             </div>
           )}
         </div>
@@ -134,8 +187,8 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
         <div className="ai-modal-tips">
           <b>Dicas para melhor resultado:</b>
           <ul>
-            <li>Imagens aéreas ou de satélite com divisões visíveis de lotes funcionam melhor</li>
-            <li>Certifique-se que o loteamento esteja centralizado na imagem</li>
+            <li>PDF da planta vetorial é o formato ideal — mais preciso que imagem</li>
+            <li>Certifique-se que todos os lotes e ruas estejam visíveis</li>
             <li>Após a geração, revise e ajuste cada lote no editor</li>
           </ul>
         </div>
@@ -147,14 +200,14 @@ export function AiLoteamentoGenerator({ onGenerate, onClose }) {
           <button
             className="ed-tbtn ed-tbtn-primary"
             onClick={handleGenerate}
-            disabled={!file || loading}
+            disabled={!fileIsSelected || loading}
           >
             {loading ? (
               <>
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ animation: "spin 1s linear infinite" }}>
                   <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.8" strokeDasharray="20 10"/>
                 </svg>
-                Analisando imagem...
+                Analisando planta...
               </>
             ) : (
               <>
