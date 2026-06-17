@@ -75,10 +75,14 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const [filtros, setFiltros] = useState({ status: [], precoMin: '', precoMax: '', areaMin: '', areaMax: '', quadra: '' });
+  const [showFiltros, setShowFiltros] = useState(false);
 
   useEffect(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+    setFiltros({ status: [], precoMin: '', precoMax: '', areaMin: '', areaMax: '', quadra: '' });
+    setShowFiltros(false);
   }, [loteamento.id]);
 
   const onWheel = (e) => {
@@ -108,11 +112,40 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
     return () => window.removeEventListener('mouseup', up);
   }, []);
 
+  const quadras = useMemo(() => {
+    const qs = [...new Set((loteamento.lots || []).map(l => l.quadra).filter(Boolean))];
+    return qs.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+  }, [loteamento.lots]);
+
+  const filteredLots = useMemo(() => {
+    const { status, precoMin, precoMax, areaMin, areaMax, quadra } = filtros;
+    return (loteamento.lots || []).filter(lot => {
+      if (status.length > 0 && !status.includes(lot.status)) return false;
+      const preco = Number(lot.preco) || 0;
+      if (precoMin && preco < Number(precoMin)) return false;
+      if (precoMax && preco > Number(precoMax)) return false;
+      const area = Number(lot.area) || 0;
+      if (areaMin && area < Number(areaMin)) return false;
+      if (areaMax && area > Number(areaMax)) return false;
+      if (quadra && String(lot.quadra) !== String(quadra)) return false;
+      return true;
+    });
+  }, [loteamento.lots, filtros]);
+
+  const filtroAtivos = useMemo(() => {
+    let n = 0;
+    if (filtros.status.length) n++;
+    if (filtros.precoMin || filtros.precoMax) n++;
+    if (filtros.areaMin || filtros.areaMax) n++;
+    if (filtros.quadra) n++;
+    return n;
+  }, [filtros]);
+
   const counts = useMemo(() => {
     const c = { disponivel: 0, reservado: 0, vendido: 0 };
-    for (const l of loteamento.lots) c[l.status] = (c[l.status] || 0) + 1;
+    for (const l of filteredLots) c[l.status] = (c[l.status] || 0) + 1;
     return c;
-  }, [loteamento]);
+  }, [filteredLots]);
 
   const [vw, vh] = loteamento.viewBox.split(' ').slice(2).map(Number);
 
@@ -339,7 +372,7 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
           })}
 
           {/* Lots */}
-          {loteamento.lots.map((lot) => {
+          {filteredLots.map((lot) => {
             const s = STATUS_COLORS[lot.status] || STATUS_COLORS.disponivel;
             const isSel = selectedLotId === lot.id;
             return (
@@ -416,14 +449,25 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
         onZoomOut={() => setZoom(z => Math.max(0.6, z - 0.2))}
         onReset={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
         theme={T}
+        onToggleFiltros={() => setShowFiltros(f => !f)}
+        filtroAtivos={filtroAtivos}
+        showFiltros={showFiltros}
       />
+      {showFiltros && (
+        <MapFilters
+          filtros={filtros}
+          setFiltros={setFiltros}
+          quadras={quadras}
+          onClose={() => setShowFiltros(false)}
+        />
+      )}
       <MapLegend counts={counts} theme={T} />
       <MapInfoBadge loteamento={loteamento} theme={T} />
     </div>
   );
 }
 
-function MapControls({ zoom, onZoomIn, onZoomOut, onReset, theme }) {
+function MapControls({ zoom, onZoomIn, onZoomOut, onReset, theme, onToggleFiltros, filtroAtivos, showFiltros }) {
   return (
     <div className="map-ctrls">
       <button className="map-btn" onClick={onZoomIn} aria-label="Aproximar">
@@ -438,6 +482,134 @@ function MapControls({ zoom, onZoomIn, onZoomOut, onReset, theme }) {
           <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
         </svg>
       </button>
+      <div style={{ width: 1, height: 20, background: 'rgba(0,0,0,0.12)', margin: '0 2px' }} />
+      <button
+        className="map-btn"
+        onClick={onToggleFiltros}
+        aria-label="Filtros"
+        title="Filtros"
+        style={{ position: 'relative', ...(showFiltros || filtroAtivos > 0 ? { background: '#2563eb', color: '#fff' } : {}) }}
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M2 4h12M5 8h6M7 12h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+        {filtroAtivos > 0 && (
+          <span style={{
+            position: 'absolute', top: -4, right: -4,
+            background: '#ef4444', color: '#fff', borderRadius: '50%',
+            width: 14, height: 14, fontSize: 9, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            lineHeight: 1,
+          }}>
+            {filtroAtivos}
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function MapFilters({ filtros, setFiltros, quadras, onClose }) {
+  const STATUS_OPTIONS = [
+    { key: 'disponivel', label: 'Disponível', color: STATUS_COLORS.disponivel.fill },
+    { key: 'reservado',  label: 'Reservado',  color: STATUS_COLORS.reservado.fill  },
+    { key: 'vendido',    label: 'Vendido',    color: STATUS_COLORS.vendido.fill    },
+  ];
+
+  const toggleStatus = (s) =>
+    setFiltros(f => ({
+      ...f,
+      status: f.status.includes(s) ? f.status.filter(x => x !== s) : [...f.status, s],
+    }));
+
+  const reset = () => setFiltros({ status: [], precoMin: '', precoMax: '', areaMin: '', areaMax: '', quadra: '' });
+
+  const inputStyle = { flex: 1, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '0.75rem', width: '100%', boxSizing: 'border-box' };
+  const sectionLabel = { fontSize: '0.65rem', fontWeight: 700, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.05em', display: 'block' };
+
+  return (
+    <div style={{
+      position: 'absolute', top: 12, right: 12, zIndex: 10,
+      background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(8px)',
+      border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px',
+      boxShadow: '0 4px 20px rgba(0,0,0,.13)', width: 230,
+      fontFamily: 'system-ui, sans-serif',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '.07em' }}>Filtros</span>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <button onClick={reset} style={{ fontSize: '0.7rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}>Limpar</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 18, lineHeight: 1, padding: '0 2px' }}>×</button>
+        </div>
+      </div>
+
+      {/* Status */}
+      <div style={{ marginBottom: 12 }}>
+        <span style={sectionLabel}>Status</span>
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {STATUS_OPTIONS.map(({ key, label, color }) => {
+            const active = filtros.status.includes(key);
+            return (
+              <button
+                key={key}
+                onClick={() => toggleStatus(key)}
+                style={{
+                  padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 600,
+                  cursor: 'pointer', border: `1.5px solid ${color}`,
+                  background: active ? color : 'transparent',
+                  color: active ? '#fff' : '#374151',
+                  transition: 'all .12s',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Price range */}
+      <div style={{ marginBottom: 12 }}>
+        <span style={sectionLabel}>Preço (R$)</span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input type="number" placeholder="Mín" value={filtros.precoMin}
+            onChange={e => setFiltros(f => ({ ...f, precoMin: e.target.value }))}
+            style={inputStyle} />
+          <span style={{ color: '#9ca3af', fontSize: '0.75rem', flexShrink: 0 }}>—</span>
+          <input type="number" placeholder="Máx" value={filtros.precoMax}
+            onChange={e => setFiltros(f => ({ ...f, precoMax: e.target.value }))}
+            style={inputStyle} />
+        </div>
+      </div>
+
+      {/* Area range */}
+      <div style={{ marginBottom: quadras.length > 0 ? 12 : 0 }}>
+        <span style={sectionLabel}>Área (m²)</span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input type="number" placeholder="Mín" value={filtros.areaMin}
+            onChange={e => setFiltros(f => ({ ...f, areaMin: e.target.value }))}
+            style={inputStyle} />
+          <span style={{ color: '#9ca3af', fontSize: '0.75rem', flexShrink: 0 }}>—</span>
+          <input type="number" placeholder="Máx" value={filtros.areaMax}
+            onChange={e => setFiltros(f => ({ ...f, areaMax: e.target.value }))}
+            style={inputStyle} />
+        </div>
+      </div>
+
+      {/* Quadra */}
+      {quadras.length > 0 && (
+        <div>
+          <span style={sectionLabel}>Quadra</span>
+          <select
+            value={filtros.quadra}
+            onChange={e => setFiltros(f => ({ ...f, quadra: e.target.value }))}
+            style={{ ...inputStyle, flex: 'none', background: '#fff', cursor: 'pointer' }}
+          >
+            <option value="">Todas</option>
+            {quadras.map(q => <option key={q} value={q}>Quadra {q}</option>)}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

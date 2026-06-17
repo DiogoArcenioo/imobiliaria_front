@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { fmtBRL, fmtBRLShort, statusLabel } from '../lib/data';
 import { computeMetrics, flattenLots } from '../lib/api';
 import { STATUS_COLORS } from './MapView';
@@ -20,6 +21,11 @@ export const Dashboard = ({
   selectedEmpresa = null,
   onSelectEmpresa,
 }) => {
+  const isGerente = user?.role === 'gerente';
+  const [showInativos, setShowInativos] = useState(false);
+
+  const activeLoteamentos = loteamentos.filter((lt) => lt.ativo !== false);
+  const displayedLoteamentos = (isGerente && showInativos) ? loteamentos : activeLoteamentos;
   const metrics = computeMetrics(loteamentos);
   const lots = flattenLots(loteamentos);
   const allSoldLots = lots.filter((lot) => lot.status === 'vendido');
@@ -233,6 +239,16 @@ export const Dashboard = ({
           <header className="sec-header">
             <h2 className="sec-title">Loteamentos</h2>
             <div className="sec-tools">
+              {isGerente && loteamentos.some((lt) => lt.ativo === false) && (
+                <button
+                  className="sec-tool-btn"
+                  onClick={() => setShowInativos((v) => !v)}
+                  style={{ color: showInativos ? 'var(--accent)' : undefined }}
+                  title={showInativos ? 'Ocultar inativos' : 'Mostrar inativos'}
+                >
+                  {showInativos ? 'Ocultar inativos' : 'Ver inativos'}
+                </button>
+              )}
               <button className="sec-tool-btn" onClick={onRefresh} title="Atualizar">
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
                   <path d="M14 8A6 6 0 1 1 8 2a6 6 0 0 1 4.24 1.76L14 2v4h-4l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
@@ -247,7 +263,7 @@ export const Dashboard = ({
               <div className="loading-card" />
               <div className="loading-card" />
             </div>
-          ) : loteamentos.length === 0 ? (
+          ) : displayedLoteamentos.length === 0 ? (
             <div className="lot-cards-empty">
               <p>Nenhum loteamento encontrado.</p>
               {canCreateLoteamento && (
@@ -258,7 +274,7 @@ export const Dashboard = ({
             </div>
           ) : (
             <div className="lot-cards">
-              {loteamentos.map((loteamento) => (
+              {displayedLoteamentos.map((loteamento) => (
                 <LoteamentoCard
                   key={loteamento.id}
                   loteamento={loteamento}
@@ -299,22 +315,32 @@ function MetricCard({ label, value, delta, sub, color, big }) {
   );
 }
 
-export function LoteamentoCard({ loteamento, onClick, onEdit }) {
+export function LoteamentoCard({ loteamento, onClick, onEdit, onToggleAtivo, toggling, canShare }) {
   const lots = loteamento.lots || [];
   const counts = { disponivel: 0, reservado: 0, vendido: 0 };
   for (const lot of lots) counts[lot.status] = (counts[lot.status] || 0) + 1;
   const pctSold = lots.length > 0 ? Math.round((counts.vendido / lots.length) * 100) : 0;
   const location = [loteamento.bairro, loteamento.cidade, loteamento.estado].filter(Boolean).join(' · ');
+  const inativo = loteamento.ativo === false;
 
   return (
-    <div className="lot-card-row" onClick={onClick}>
+    <div className="lot-card-row" onClick={onClick} style={inativo ? { opacity: 0.65 } : undefined}>
       <div className="lcr-map">
         <MiniMap loteamento={loteamento} />
       </div>
       <div className="lcr-body">
         <div className="lcr-head">
           <div>
-            <div className="lcr-eyebrow">{loteamento.fase || 'Loteamento'}</div>
+            <div className="lcr-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {loteamento.fase || 'Loteamento'}
+              {inativo && (
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.05em',
+                  padding: '1px 7px', borderRadius: 20,
+                  background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5',
+                }}>INATIVO</span>
+              )}
+            </div>
             <div className="lcr-title">{loteamento.nome}</div>
             <div className="lcr-loc">
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
@@ -324,11 +350,47 @@ export function LoteamentoCard({ loteamento, onClick, onEdit }) {
               {location || 'Local não informado'}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {onToggleAtivo && (
+              <button
+                className="lcr-edit"
+                onClick={(e) => { e.stopPropagation(); onToggleAtivo(); }}
+                disabled={toggling}
+                title={inativo ? 'Reativar loteamento' : 'Arquivar loteamento'}
+                style={{
+                  padding: '4px 12px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600,
+                  border: inativo ? '1px solid #86efac' : '1px solid #fca5a5',
+                  color: inativo ? '#15803d' : '#dc2626',
+                  background: 'transparent', width: 'auto', height: 'auto',
+                }}
+              >
+                {toggling ? '...' : inativo ? 'Reativar' : 'Arquivar'}
+              </button>
+            )}
             {onEdit && (
               <button className="lcr-edit" onClick={(e) => { e.stopPropagation(); onEdit(); }} title="Editar cadastro e mapa">
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                   <path d="M11 2l3 3-8 8H3v-3l8-8z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none" />
+                </svg>
+              </button>
+            )}
+            {canShare && (
+              <button
+                className="lcr-edit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const url = `${window.location.origin}/loteamento/${loteamento.id}`;
+                  if (navigator.clipboard) {
+                    navigator.clipboard.writeText(url).then(() => alert('Link copiado: ' + url));
+                  } else {
+                    window.open(url, '_blank');
+                  }
+                }}
+                title="Copiar link público do loteamento"
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <path d="M7 9a3 3 0 0 0 4.5.4l2-2A3 3 0 0 0 9 3L7.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                  <path d="M9 7a3 3 0 0 0-4.5-.4l-2 2A3 3 0 0 0 7 13l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
                 </svg>
               </button>
             )}

@@ -114,6 +114,105 @@ function exportCsv(filename, headers, rows) {
   URL.revokeObjectURL(url);
 }
 
+function exportPdf({ titulo, periodoLabel, dsLabel, rows, grupos, groupBy, total, valorHeader, dataset }) {
+  const fmtV = (v) =>
+    Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const gruposHtml = grupos && grupos.length > 0 ? `
+    <h3>Agrupamento por ${
+      groupBy === 'vendedor' ? 'Responsável' : groupBy === 'empreendimento' ? 'Empreendimento' : 'Mês'
+    }</h3>
+    <table>
+      <thead><tr>
+        <th>${groupBy === 'vendedor' ? 'Responsável' : groupBy === 'empreendimento' ? 'Empreendimento' : 'Mês'}</th>
+        <th>Registros</th>
+        <th>${valorHeader} total</th>
+        <th>Ticket médio</th>
+        <th>% do total</th>
+      </tr></thead>
+      <tbody>${grupos.map((g) => `<tr>
+        <td><strong>${esc(groupBy === 'mes' ? mesLabel(g.key) : g.key)}</strong></td>
+        <td>${g.qtd}</td>
+        <td>${fmtV(g.valor)}</td>
+        <td>${fmtV(g.qtd ? g.valor / g.qtd : 0)}</td>
+        <td>${total > 0 ? Math.round((g.valor / total) * 100) : 0}%</td>
+      </tr>`).join('')}</tbody>
+    </table>` : '';
+
+  const rowsHtml = `
+    <h3>Detalhamento</h3>
+    <table>
+      <thead><tr>
+        <th>Data</th><th>Unidade</th><th>Empreendimento</th>
+        <th>Responsável</th>
+        <th>${dataset === 'cancelamentos' ? 'Motivo' : 'Cliente'}</th>
+        <th>${valorHeader}</th>
+      </tr></thead>
+      <tbody>${rows.map((r) => `<tr>
+        <td>${esc(fmtData(r.data))}</td>
+        <td>${esc(r.codigo)}<br/><small>${esc(r.extra)}</small></td>
+        <td>${esc(r.empreendimento)}</td>
+        <td>${esc(r.responsavel)}</td>
+        <td>${esc(r.cliente)}</td>
+        <td>${fmtV(r.valor)}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr>
+        <td colspan="5"><strong>Total</strong></td>
+        <td><strong>${fmtV(total)}</strong></td>
+      </tr></tfoot>
+    </table>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <title>${esc(titulo)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 24px 32px; }
+    .header { border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 18px; }
+    .header h1 { font-size: 18px; color: #1e3a8a; }
+    .header p { color: #555; margin-top: 4px; font-size: 11px; }
+    h3 { font-size: 12px; font-weight: 700; color: #1e3a8a; text-transform: uppercase;
+         letter-spacing: .04em; margin: 20px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    th { background: #eff6ff; color: #1e3a8a; font-weight: 700; padding: 6px 8px;
+         text-align: left; border: 1px solid #dbeafe; white-space: nowrap; }
+    td { padding: 5px 8px; border: 1px solid #e5e7eb; vertical-align: top; }
+    tr:nth-child(even) td { background: #f9fafb; }
+    tfoot td { background: #eff6ff !important; font-weight: 700; border-top: 2px solid #93c5fd; }
+    small { color: #6b7280; font-size: 9.5px; }
+    .meta { display: flex; gap: 24px; margin-bottom: 6px; font-size: 11px; color: #374151; }
+    .meta span strong { color: #111; }
+    @media print {
+      @page { margin: 15mm 12mm; size: A4 landscape; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${esc(titulo)}</h1>
+    <p>Período: ${esc(periodoLabel)} · Tipo: ${esc(dsLabel)} · Gerado em ${new Date().toLocaleString('pt-BR')}</p>
+  </div>
+  <div class="meta">
+    <span><strong>${rows.length}</strong> ${rows.length === 1 ? 'registro' : 'registros'}</span>
+    <span>Total: <strong>${fmtV(total)}</strong></span>
+  </div>
+  ${gruposHtml}
+  ${rowsHtml}
+  <script>window.onload = function(){ window.print(); }</script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Permita pop-ups para exportar o PDF.'); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
 export function RelatoriosPanel({ user }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -182,7 +281,7 @@ export function RelatoriosPanel({ user }) {
           role: equipe.find((u) => u.id === id)?.role || null,
           vendas_qtd: 0, vendas_valor: 0,
           alugueis_qtd: 0, alugueis_valor: 0,
-          reservas_qtd: 0,
+          reservas_qtd: 0, comissao_valor: 0,
         });
       }
       return porUsuario.get(key);
@@ -194,6 +293,7 @@ export function RelatoriosPanel({ user }) {
       const e = entrada(v.vendedor_id, v.vendedor_nome);
       e.vendas_qtd++;
       e.vendas_valor += v.valor;
+      e.comissao_valor += v.valor * ((v.comissao_percentual || 0) / 100);
     }
     for (const l of novasLocacoes) {
       const e = entrada(l.responsavel_id, l.responsavel_nome);
@@ -356,6 +456,23 @@ export function RelatoriosPanel({ user }) {
     );
   };
 
+  const handleExportPdf = () => {
+    if (!explorar) return;
+    const dsLabel = DATASETS.find((d) => d.id === dataset)?.label || dataset;
+    const valorHeader = dataset === 'locacoes' ? 'Valor mensal' : 'Valor';
+    exportPdf({
+      titulo: `Relatório de ${dsLabel}`,
+      periodoLabel,
+      dsLabel,
+      rows: explorar.rows,
+      grupos: explorar.grupos,
+      groupBy,
+      total: explorar.total,
+      valorHeader,
+      dataset,
+    });
+  };
+
   if (loading) {
     return (
       <div className="dash">
@@ -449,6 +566,7 @@ export function RelatoriosPanel({ user }) {
           busca={busca}
           setBusca={setBusca}
           onExport={handleExport}
+          onExportPdf={handleExportPdf}
           periodoLabel={periodoLabel}
         />
       )}
@@ -599,6 +717,11 @@ function VisaoGeral({ calc, data, periodoLabel, filtroOrigem }) {
                         {' · '}{v.alugueis_qtd} {v.alugueis_qtd === 1 ? 'aluguel' : 'aluguéis'}
                         {v.alugueis_valor > 0 ? ` (${fmtBRLShort(v.alugueis_valor)}/mês)` : ''}
                         {' · '}{v.reservas_qtd} {v.reservas_qtd === 1 ? 'reserva' : 'reservas'}
+                        {v.comissao_valor > 0 && (
+                          <span style={{ marginLeft: 6, color: '#15803d', fontWeight: 700 }}>
+                            · comissão {fmtBRLShort(v.comissao_valor)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -710,7 +833,7 @@ function EstoqueLinha({ titulo, total, segmentos, extra }) {
 function Explorar({
   data, explorar, dataset, setDataset, groupBy, setGroupBy,
   filtroVendedor, setFiltroVendedor, filtroEmpreendimento, setFiltroEmpreendimento,
-  filtroOrigem, busca, setBusca, onExport, periodoLabel,
+  filtroOrigem, busca, setBusca, onExport, onExportPdf, periodoLabel,
 }) {
   const equipe = (data.equipe || []).filter((u) => u.role === 'vendedor' || u.role === 'gerente');
 
@@ -782,9 +905,17 @@ function Explorar({
             />
           </div>
 
-          <button className="qa-btn qa-btn-primary rel-export" onClick={onExport} disabled={!explorar?.rows.length}>
-            Exportar CSV
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button className="qa-btn rel-export" onClick={onExport} disabled={!explorar?.rows.length}
+              style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              title="Baixar planilha CSV">
+              Exportar CSV
+            </button>
+            <button className="qa-btn qa-btn-primary rel-export" onClick={onExportPdf} disabled={!explorar?.rows.length}
+              title="Abrir relatório formatado para salvar como PDF">
+              Exportar PDF
+            </button>
+          </div>
         </div>
       </section>
 

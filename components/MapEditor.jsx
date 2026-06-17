@@ -558,6 +558,8 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
     bairro: initialLoteamento?.bairro || '',
     cidade: initialLoteamento?.cidade || '',
     estado: initialLoteamento?.estado || 'GO',
+    comissao_percentual: initialLoteamento?.comissao_percentual ?? 0,
+    dias_validade_reserva: initialLoteamento?.dias_validade_reserva ?? 15,
   });
   const [selectedIds, setSelectedIds] = useStateEd([]);   // multi-select IDs
   const [boxSelect, setBoxSelect] = useStateEd(null);      // { startX, startY, curX, curY }
@@ -1488,6 +1490,32 @@ export const MapEditor = ({ initialLoteamento, onBack, onSave, saving = false, d
               onChange={(e) => setLoteamentoMeta({ ...loteamentoMeta, estado: e.target.value.toUpperCase().slice(0,2) })}
               size="2"
             />
+            <span className="ed-title-sep" style={{ marginLeft: 8 }}>|</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', alignSelf: 'center' }}>Comissão</span>
+            <input
+              className="ed-title-input"
+              type="number"
+              min="0" max="100" step="0.5"
+              value={loteamentoMeta.comissao_percentual}
+              onChange={(e) => setLoteamentoMeta({ ...loteamentoMeta, comissao_percentual: Number(e.target.value) })}
+              title="Percentual de comissão sobre vendas (%)"
+              size="4"
+              style={{ width: 48 }}
+            />
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', alignSelf: 'center' }}>%</span>
+            <span className="ed-title-sep">|</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', alignSelf: 'center' }}>Reserva válida</span>
+            <input
+              className="ed-title-input"
+              type="number"
+              min="0" max="365" step="1"
+              value={loteamentoMeta.dias_validade_reserva}
+              onChange={(e) => setLoteamentoMeta({ ...loteamentoMeta, dias_validade_reserva: Number(e.target.value) })}
+              title="Dias de validade da reserva (0 = sem limite)"
+              size="3"
+              style={{ width: 44 }}
+            />
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', alignSelf: 'center' }}>dias</span>
           </div>
         </div>
         <div className="ed-top-right">

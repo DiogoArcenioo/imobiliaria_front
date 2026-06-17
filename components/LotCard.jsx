@@ -1,9 +1,85 @@
 'use client';
 
-import { useState, useRef, useLayoutEffect } from 'react';
+import { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { fmtBRL, statusLabel as getStatusLabel } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { STATUS_COLORS } from './MapView';
+import { getLotePrecoHistorico } from '../lib/api';
+
+function imprimirFichaLote(lot, loteamento) {
+  const fmtV = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const statusTexto = { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido' };
+  const statusCor = { disponivel: '#2563eb', reservado: '#d97706', vendido: '#dc2626' };
+  const cor = statusCor[lot.status] || '#2563eb';
+  const local = [loteamento?.bairro, loteamento?.cidade, loteamento?.estado].filter(Boolean).join(' · ');
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <title>Ficha do Lote ${lot.id}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #111; background: #fff; }
+    .page { max-width: 148mm; margin: auto; padding: 10mm; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid ${cor}; padding-bottom: 8px; margin-bottom: 12px; }
+    .header-left h1 { font-size: 22px; font-weight: 900; color: ${cor}; letter-spacing: -0.5px; }
+    .header-left p { font-size: 11px; color: #555; margin-top: 2px; }
+    .status-badge { background: ${cor}; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: .05em; }
+    .empreend { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+    .empreend-sub { font-size: 11px; color: #666; margin-bottom: 14px; }
+    .specs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .spec { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; }
+    .spec-k { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #888; margin-bottom: 2px; }
+    .spec-v { font-size: 15px; font-weight: 700; color: #111; }
+    .spec-v small { font-size: 11px; font-weight: 400; color: #555; }
+    .price-box { background: ${cor}; color: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .price-box .lbl { font-size: 11px; opacity: .85; text-transform: uppercase; letter-spacing: .06em; }
+    .price-box .val { font-size: 22px; font-weight: 900; }
+    .price-box .m2 { font-size: 11px; opacity: .8; }
+    .tags { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+    .tag { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 20px; background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+    .tag-premium { background: #fef9c3; color: #854d0e; border-color: #fde047; }
+    .footer { border-top: 1px solid #e5e7eb; padding-top: 8px; font-size: 10px; color: #999; display: flex; justify-content: space-between; }
+    @media print { @page { size: A5 portrait; margin: 8mm; } body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-left">
+        <h1>LOTE ${lot.id}</h1>
+        <p>Quadra ${lot.quadra || '—'} · Lote Nº ${lot.numero || lot.id}</p>
+      </div>
+      <span class="status-badge">${statusTexto[lot.status] || lot.status}</span>
+    </div>
+    <div class="empreend">${loteamento?.nome || '—'}</div>
+    <div class="empreend-sub">${local || 'Local não informado'}${loteamento?.fase ? ' · ' + loteamento.fase : ''}</div>
+    <div class="price-box">
+      <div><div class="lbl">Preço</div><div class="val">${fmtV(lot.preco || 0)}</div></div>
+      ${lot.area > 0 && lot.preco > 0 ? `<div><div class="lbl">Por m²</div><div class="m2">${fmtV(Math.round(lot.preco / lot.area))}/m²</div></div>` : ''}
+    </div>
+    <div class="specs">
+      <div class="spec"><div class="spec-k">Área total</div><div class="spec-v">${lot.area || '—'} <small>${lot.area ? 'm²' : ''}</small></div></div>
+      <div class="spec"><div class="spec-k">Frente</div><div class="spec-v">${lot.frente || '—'} <small>${lot.frente ? 'm' : ''}</small></div></div>
+      <div class="spec"><div class="spec-k">Fundo</div><div class="spec-v">${lot.fundo || '—'} <small>${lot.fundo ? 'm' : ''}</small></div></div>
+      <div class="spec"><div class="spec-k">Orientação</div><div class="spec-v">${lot.orientacao || '—'}</div></div>
+    </div>
+    ${(lot.esquina || lot.premium) ? `<div class="tags">${lot.esquina ? '<span class="tag">Esquina</span>' : ''}${lot.premium ? '<span class="tag tag-premium">Premium</span>' : ''}</div>` : ''}
+    <div class="footer">
+      <span>Gerado em ${new Date().toLocaleDateString('pt-BR')}</span>
+      <span>${loteamento?.nome || ''}</span>
+    </div>
+  </div>
+  <script>window.onload = function(){ window.print(); }</script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Permita pop-ups para imprimir a ficha.'); return; }
+  win.document.write(html);
+  win.document.close();
+}
 
 function PriceEditor({ preco, area, canEdit, onSave }) {
   const [editing, setEditing] = useState(false);
@@ -73,12 +149,18 @@ function PriceEditor({ preco, area, canEdit, onSave }) {
   );
 }
 
-export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange, onUpdatePrice, onOpenDrawer, user }) => {
+export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange, onUpdatePrice, onOpenDrawer, user, loteamento }) => {
   if (!lot) return null;
   const status = STATUS_COLORS[lot.status] || STATUS_COLORS.disponivel;
   const statusLabel = getStatusLabel(lot.status);
   const [actionLoading, setActionLoading] = useState(false);
   const canEditPrice = onUpdatePrice && user && ['admin', 'gerente'].includes(user.role) && lot.status !== 'vendido';
+  const [precoHistorico, setPrecoHistorico] = useState([]);
+
+  useEffect(() => {
+    if (!lot?.db_id) return;
+    getLotePrecoHistorico(lot.db_id).then(setPrecoHistorico).catch(() => {});
+  }, [lot?.db_id]);
 
   const photoBg = lot.status === 'vendido'
     ? 'linear-gradient(135deg, #3a2a2a 0%, #5a3838 100%)'
@@ -163,6 +245,21 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
           </div>
         </div>
         <ClientLinkInfo lot={lot} user={user} compact onOpenDrawer={onOpenDrawer} />
+        {lot.status === 'reservado' && lot.reserva_expira_em && (() => {
+          const expira = new Date(lot.reserva_expira_em);
+          const diffMs = expira - new Date();
+          const expirou = diffMs < 0;
+          const diffDias = Math.ceil(Math.abs(diffMs) / 86_400_000);
+          return (
+            <div style={{
+              fontSize: '0.68rem', fontWeight: 600, padding: '3px 7px', borderRadius: 5, marginBottom: 4,
+              background: expirou ? '#fee2e2' : diffDias <= 3 ? '#fef9c3' : '#f0fdf4',
+              color: expirou ? '#b91c1c' : diffDias <= 3 ? '#92400e' : '#15803d',
+            }}>
+              {expirou ? `Expirada há ${diffDias}d` : `Expira em ${diffDias}d`}
+            </div>
+          );
+        })()}
         <div className="lcc-actions">
           {canReserve && (
             <button
@@ -310,7 +407,49 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
         </div>
       )}
 
+      {lot.status === 'reservado' && lot.reserva_expira_em && (() => {
+        const expira = new Date(lot.reserva_expira_em);
+        const agora = new Date();
+        const diffMs = expira - agora;
+        const expirou = diffMs < 0;
+        const diffDias = Math.ceil(Math.abs(diffMs) / 86_400_000);
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px',
+            borderRadius: 6, fontSize: '0.72rem', fontWeight: 600, marginBottom: 4,
+            background: expirou ? '#fee2e2' : diffDias <= 3 ? '#fef9c3' : '#f0fdf4',
+            color: expirou ? '#b91c1c' : diffDias <= 3 ? '#92400e' : '#15803d',
+            border: `1px solid ${expirou ? '#fca5a5' : diffDias <= 3 ? '#fde68a' : '#86efac'}`,
+          }}>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M8 3v5l3 3M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            {expirou ? `Reserva expirada há ${diffDias} dia${diffDias !== 1 ? 's' : ''}` : `Reserva expira em ${diffDias} dia${diffDias !== 1 ? 's' : ''}`}
+          </div>
+        );
+      })()}
+
       <ClientLinkInfo lot={lot} user={user} onOpenDrawer={onOpenDrawer} />
+
+      {precoHistorico.length > 0 && (
+        <div style={{ margin: '8px 0 4px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+          <div style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M8 3v5l3 3M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Histórico de preço
+          </div>
+          {precoHistorico.slice(0, 5).map((h) => (
+            <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', borderTop: '1px solid var(--border)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>
+                {h.preco_anterior != null ? fmtBRL(h.preco_anterior) : '—'}
+                {' → '}
+                <b style={{ color: 'var(--text)' }}>{h.preco_novo != null ? fmtBRL(h.preco_novo) : '—'}</b>
+              </span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }}>
+                {new Date(h.alterado_em).toLocaleDateString('pt-BR')}
+                {h.alterado_por ? ` · ${h.alterado_por}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="lcd-actions">
         {canReserve && (
@@ -330,6 +469,20 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
           {sellLabel}
         </button>
       </div>
+      <button
+        onClick={() => imprimirFichaLote(lot, loteamento)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 5, width: '100%', marginTop: 6,
+          padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer',
+          fontSize: '0.75rem', color: 'var(--text-muted)', justifyContent: 'center',
+        }}
+        title="Abrir ficha do lote para impressão/PDF"
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+          <path d="M4 5V2h8v3M3 5h10a1 1 0 0 1 1 1v5H2V6a1 1 0 0 1 1-1zM4 11v3h8v-3" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+        </svg>
+        Imprimir ficha
+      </button>
     </div>
   );
 };

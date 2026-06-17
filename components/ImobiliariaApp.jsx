@@ -32,6 +32,7 @@ import {
   updateUser,
   cancelarVenda,
   createLoteamento,
+  toggleLoteamentoAtivo,
   computeMetrics,
   flattenLots,
   getCancelamentosLog,
@@ -117,6 +118,7 @@ export default function ImobiliariaApp() {
   const [empresas, setEmpresas] = useState([]);
   const [selectedEmpresa, setSelectedEmpresa] = useState(null);
   const [currentEmpresa, setCurrentEmpresa] = useState(null);
+  const [avisoVencimento, setAvisoVencimento] = useState(null); // { dias, tipo: 'assinatura'|'trial' }
 
   const mapContainerRef = useRef(null);
 
@@ -155,7 +157,28 @@ export default function ImobiliariaApp() {
     }
 
     getCurrentEmpresa()
-      .then((empresa) => setCurrentEmpresa(empresa))
+      .then((empresa) => {
+        setCurrentEmpresa(empresa);
+
+        // Aviso de vencimento: mostra uma vez por sessão para não-admin
+        if (!empresa || user.role === 'admin') return;
+        const agora = new Date();
+        const DIAS_AVISO = 7;
+
+        const venc = empresa.venc_mensalidade ? new Date(empresa.venc_mensalidade) : null;
+        const trial = empresa.trial_ends_at ? new Date(empresa.trial_ends_at) : null;
+
+        const dataReferencia = venc && venc > agora ? venc : (!venc && trial && trial > agora ? trial : null);
+        const tipo = (venc && venc > agora) ? 'assinatura' : 'trial';
+
+        if (dataReferencia) {
+          const diffMs = dataReferencia - agora;
+          const dias = Math.ceil(diffMs / 86_400_000);
+          if (dias <= DIAS_AVISO) {
+            setAvisoVencimento({ dias, tipo });
+          }
+        }
+      })
       .catch((err) => showToast('Erro ao carregar empresa: ' + err.message, 'error'));
   }, [user, selectedEmpresa]);
 
@@ -1171,6 +1194,14 @@ export default function ImobiliariaApp() {
         </div>
       )}
 
+      {avisoVencimento && (
+        <ModalAvisoVencimento
+          dias={avisoVencimento.dias}
+          tipo={avisoVencimento.tipo}
+          onClose={() => setAvisoVencimento(null)}
+        />
+      )}
+
       <TweaksPanel>
         <TweakSection label="Mapa" />
         <TweakRadio
@@ -1303,7 +1334,7 @@ function LoteamentosView({ loteamentos, loading, onOpenLoteamento, onOpenEditor,
   const handleToggleAtivo = async (lt) => {
     setToggling(lt.id);
     try {
-      await updateLote(lt.id, { ativo: !lt.ativo }); // uses loteamento PATCH
+      await toggleLoteamentoAtivo(lt.id, !lt.ativo);
       onRefresh?.();
     } catch (err) {
       alert(err.message || 'Erro ao arquivar loteamento.');
@@ -1359,29 +1390,15 @@ function LoteamentosView({ loteamentos, loading, onOpenLoteamento, onOpenEditor,
       ) : (
         <div className="lot-cards">
           {filtered.map((loteamento) => (
-            <div key={loteamento.id} style={{ position: 'relative', opacity: loteamento.ativo === false ? 0.65 : 1 }}>
-              <LoteamentoCard
-                loteamento={loteamento}
-                onClick={() => onOpenLoteamento(loteamento.id)}
-                onEdit={canEditLoteamento ? () => onOpenEditor?.(loteamento) : null}
-              />
-              {canEditLoteamento && (
-                <button
-                  onClick={() => handleToggleAtivo(loteamento)}
-                  disabled={toggling === loteamento.id}
-                  title={loteamento.ativo === false ? 'Reativar loteamento' : 'Arquivar loteamento'}
-                  style={{
-                    position: 'absolute', top: 10, right: 10, zIndex: 2,
-                    padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600,
-                    border: loteamento.ativo === false ? '1px solid #86efac' : '1px solid #fca5a5',
-                    background: 'var(--surface)', cursor: 'pointer',
-                    color: loteamento.ativo === false ? '#15803d' : '#dc2626',
-                  }}
-                >
-                  {toggling === loteamento.id ? '...' : loteamento.ativo === false ? 'Reativar' : 'Arquivar'}
-                </button>
-              )}
-            </div>
+            <LoteamentoCard
+              key={loteamento.id}
+              loteamento={loteamento}
+              onClick={() => onOpenLoteamento(loteamento.id)}
+              onEdit={canEditLoteamento ? () => onOpenEditor?.(loteamento) : null}
+              onToggleAtivo={canEditLoteamento ? () => handleToggleAtivo(loteamento) : null}
+              toggling={toggling === loteamento.id}
+              canShare={true}
+            />
           ))}
         </div>
       )}
@@ -1729,45 +1746,53 @@ function PrediosListView({ predios, loading, canCreate, canEdit, onOpenPredio, o
             const total = stats.total || 0;
             const ocupPct = total > 0 ? Math.round(((total - (stats.disponivel || 0)) / total) * 100) : 0;
             return (
-              <div key={p.id} style={{ position: 'relative', opacity: p.ativo === false ? 0.65 : 1 }}>
-                <div className="lot-card-item" style={{ cursor: 'pointer' }} onClick={() => onOpenPredio(p.id)}>
-                  <div className="lci-header">
-                    <div>
-                      <div className="lci-name">{p.nome}</div>
-                      {(p.cidade || p.bairro) && (
-                        <div className="lci-sub">{[p.bairro, p.cidade, p.estado].filter(Boolean).join(' · ')}</div>
+              <div key={p.id} className="lot-card-item" style={{ cursor: 'pointer', opacity: p.ativo === false ? 0.65 : 1 }} onClick={() => onOpenPredio(p.id)}>
+                <div className="lci-header">
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="lci-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {p.nome}
+                      {p.ativo === false && (
+                        <span style={{
+                          fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.05em',
+                          padding: '1px 6px', borderRadius: 20, flexShrink: 0,
+                          background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5',
+                        }}>INATIVO</span>
                       )}
                     </div>
+                    {(p.cidade || p.bairro) && (
+                      <div className="lci-sub">{[p.bairro, p.cidade, p.estado].filter(Boolean).join(' · ')}</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {canEdit && onToggleAtivo && (
+                      <button
+                        onClick={(e) => handleToggle(e, p)}
+                        disabled={toggling === p.id}
+                        title={p.ativo === false ? 'Reativar prédio' : 'Arquivar prédio'}
+                        style={{
+                          padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600,
+                          border: p.ativo === false ? '1px solid #86efac' : '1px solid #fca5a5',
+                          background: 'transparent', cursor: 'pointer',
+                          color: p.ativo === false ? '#15803d' : '#dc2626',
+                        }}
+                      >
+                        {toggling === p.id ? '...' : p.ativo === false ? 'Reativar' : 'Arquivar'}
+                      </button>
+                    )}
                     <div className="lci-floors">{p.num_andares} andares</div>
                   </div>
-                  <div className="lci-stats">
-                    {Object.entries(AP_STATUS_COLORS).map(([s, c]) => (
-                      <span key={s} style={{ color: c, fontSize: 12, fontWeight: 600 }}>
-                        {stats[s] ?? 0} {s}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="lci-bar">
-                    <div className="lci-bar-fill" style={{ width: `${ocupPct}%`, background: p.cor || '#3288e0' }} />
-                  </div>
-                  <div className="lci-bar-label">{ocupPct}% ocupado · {total} aptos total</div>
                 </div>
-                {canEdit && onToggleAtivo && (
-                  <button
-                    onClick={(e) => handleToggle(e, p)}
-                    disabled={toggling === p.id}
-                    title={p.ativo === false ? 'Reativar prédio' : 'Arquivar prédio'}
-                    style={{
-                      position: 'absolute', top: 10, right: 10, zIndex: 2,
-                      padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600,
-                      border: p.ativo === false ? '1px solid #86efac' : '1px solid #fca5a5',
-                      background: 'var(--surface)', cursor: 'pointer',
-                      color: p.ativo === false ? '#15803d' : '#dc2626',
-                    }}
-                  >
-                    {toggling === p.id ? '...' : p.ativo === false ? 'Reativar' : 'Arquivar'}
-                  </button>
-                )}
+                <div className="lci-stats">
+                  {Object.entries(AP_STATUS_COLORS).map(([s, c]) => (
+                    <span key={s} style={{ color: c, fontSize: 12, fontWeight: 600 }}>
+                      {stats[s] ?? 0} {s}
+                    </span>
+                  ))}
+                </div>
+                <div className="lci-bar">
+                  <div className="lci-bar-fill" style={{ width: `${ocupPct}%`, background: p.cor || '#3288e0' }} />
+                </div>
+                <div className="lci-bar-label">{ocupPct}% ocupado · {total} aptos total</div>
               </div>
             );
           })}
@@ -1786,6 +1811,84 @@ function EmptyState({ view }) {
         <p>
           O front está focado no cadastro de loteamentos, cadastro de lotes e vendas.
         </p>
+      </div>
+    </div>
+  );
+}
+
+function ModalAvisoVencimento({ dias, tipo, onClose }) {
+  const isTrial = tipo === 'trial';
+  const textoTipo = isTrial ? 'período de teste' : 'assinatura';
+  const textoDias = dias === 1 ? 'amanhã' : `em ${dias} dias`;
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1200 }}>
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 440 }}
+      >
+        {/* Cabeçalho */}
+        <div style={{
+          padding: '24px 24px 0',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 14,
+        }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+            background: dias <= 2 ? '#fff7ed' : '#fffbeb',
+            border: `1px solid ${dias <= 2 ? '#fed7aa' : '#fde68a'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M12 8v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                stroke={dias <= 2 ? '#ea580c' : '#d97706'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: dias <= 2 ? '#ea580c' : '#b45309', textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 4 }}>
+              Aviso de vencimento
+            </div>
+            <h2 className="modal-title" style={{ padding: 0, margin: 0, fontSize: '1.05rem', lineHeight: 1.3 }}>
+              Seu {textoTipo} encerra {textoDias}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, flexShrink: 0, marginTop: -2 }}
+            aria-label="Fechar"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M4 4l8 8m0-8l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Corpo */}
+        <div className="modal-body" style={{ padding: '16px 24px 0', color: 'var(--text-muted)', fontSize: '0.88rem', lineHeight: 1.65 }}>
+          <p style={{ margin: 0 }}>
+            Tudo bem? Só queríamos te avisar que o {textoTipo} da sua empresa{' '}
+            <strong style={{ color: 'var(--text)' }}>vence {textoDias}</strong>.
+            Para que o seu acesso não seja interrompido, recomendamos entrar em contato
+            com o responsável pelo sistema o quanto antes para que a renovação seja
+            providenciada sem estresse.
+          </p>
+          <p style={{ margin: '12px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)', opacity: 0.8 }}>
+            Em caso de dúvidas ou para renovar, basta acionar o administrador da plataforma.
+          </p>
+        </div>
+
+        {/* Rodapé */}
+        <div className="modal-footer" style={{ padding: '16px 24px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            className="qa-btn qa-btn-primary"
+            style={{ minWidth: 120 }}
+          >
+            Entendido
+          </button>
+        </div>
       </div>
     </div>
   );
