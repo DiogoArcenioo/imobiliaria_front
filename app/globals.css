@@ -3791,64 +3791,85 @@ button, input, select, textarea { font: inherit; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
-  padding: 32px 24px;
+  gap: 22px;
+  padding: 26px 18px 34px;
   width: 100%;
 }
 .building-3d-svg {
   overflow: visible;
-  filter: drop-shadow(0 20px 40px rgba(15,23,42,0.1)) saturate(1.06);
+  width: min(100%, 620px);
+  height: auto;
+  filter: drop-shadow(0 18px 34px rgba(15,23,42,0.12));
 }
 .b3d-floor {
   transform-box: fill-box;
   transform-origin: center;
-  transition: transform .22s cubic-bezier(.34,1.56,.64,1), filter .18s ease;
+  transition: transform .18s ease, filter .18s ease;
+  outline: none;
+}
+.b3d-floor.is-clickable {
+  cursor: pointer;
 }
 .b3d-floor.is-hovered {
-  transform: translateY(-5px);
-  filter: brightness(1.09) saturate(1.14);
+  transform: translateY(-4px);
+  filter: brightness(1.06) saturate(1.04);
 }
 .b3d-floor.is-selected {
-  transform: translateY(-8px);
-  filter: brightness(1.12) saturate(1.2) drop-shadow(0 0 10px rgba(255,255,255,0.18));
+  transform: translateY(-7px);
+  filter: brightness(1.08) drop-shadow(0 5px 9px rgba(15,23,42,0.2));
+}
+.b3d-floor-face {
+  stroke: rgba(51, 65, 85, 0.24);
+  stroke-width: .8;
+}
+.b3d-floor:focus-visible .b3d-floor-face {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+.b3d-site {
+  pointer-events: none;
+}
+.b3d-roof {
+  pointer-events: none;
 }
 .b3d-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
-  max-width: 680px;
+  max-width: 760px;
 }
 .b3d-floor-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
+  min-height: 34px;
+  padding: 6px 11px;
   border: 1.5px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text);
   box-shadow: 0 1px 4px rgba(15,23,42,.04);
-  transition: border-color .15s, background .15s, transform .22s cubic-bezier(.34,1.56,.64,1), box-shadow .16s;
+  transition: border-color .15s, background .15s, transform .16s ease, box-shadow .16s;
 }
 .b3d-floor-btn:hover {
   border-color: var(--b3d-clr, var(--accent));
-  background: color-mix(in srgb, var(--b3d-clr, var(--accent)) 9%, var(--surface));
-  transform: translateY(-2px);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--b3d-clr, var(--accent)) 22%, transparent);
+  background: color-mix(in srgb, var(--b3d-clr, var(--accent)) 7%, var(--surface));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--b3d-clr, var(--accent)) 18%, transparent);
 }
 .b3d-floor-btn.selected {
   border-color: var(--b3d-clr, var(--accent));
-  background: color-mix(in srgb, var(--b3d-clr, var(--accent)) 13%, var(--surface));
-  transform: translateY(-2px);
-  box-shadow: 0 4px 18px color-mix(in srgb, var(--b3d-clr, var(--accent)) 28%, transparent);
+  background: color-mix(in srgb, var(--b3d-clr, var(--accent)) 11%, var(--surface));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--b3d-clr, var(--accent)) 24%, transparent);
 }
 .b3d-dot {
   width: 10px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: 50%;
   flex-shrink: 0;
   box-shadow: inset 0 0 0 1px rgba(15,23,42,0.13);
 }

@@ -16,11 +16,17 @@ const AP_COLORS = {
 };
 
 const SHAPE_CFG = {
-  corredor:    { fill: '#c8ccd1', stroke: '#9ca3af', label: 'Corredor' },
-  escada:      { fill: '#e5dcc8', stroke: '#b8a97a', label: 'Escada' },
-  elevador:    { fill: '#bcd0e8', stroke: '#6b97c8', label: 'Elevador' },
+  corredor:    { fill: '#c8ccd1', stroke: '#8b95a1', label: 'Corredor', texture: 'predio-texture-corredor' },
+  escada:      { fill: '#e5dcc8', stroke: '#9f8f63', label: 'Escada', texture: 'predio-texture-escada' },
+  elevador:    { fill: '#bcd0e8', stroke: '#587fa8', label: 'Elevador', texture: 'predio-texture-elevador' },
   'area-comum':{ fill: '#bbf0c0', stroke: '#6dbf72', label: 'Área Comum' },
 };
+
+const FLOOR_TEXTURES = [
+  { id: 'predio-texture-corredor', href: '/textures/predio/corredor.jpg', size: 140 },
+  { id: 'predio-texture-escada', href: '/textures/predio/escada.jpg', size: 110 },
+  { id: 'predio-texture-elevador', href: '/textures/predio/elevador.jpg', size: 92 },
+];
 
 const TOOL_LIST = [
   { id: 'select',      label: 'Selecionar',  shortcut: 'V', group: 'core' },
@@ -84,6 +90,31 @@ function centroid(pts) {
 
 function polyString(pts) {
   return pts.map((p) => p.join(',')).join(' ');
+}
+
+function FloorPlanTextureDefs() {
+  return (
+    <>
+      {FLOOR_TEXTURES.map((texture) => (
+        <pattern
+          key={texture.id}
+          id={texture.id}
+          patternUnits="userSpaceOnUse"
+          width={texture.size}
+          height={texture.size}
+        >
+          <image
+            href={texture.href}
+            x="0"
+            y="0"
+            width={texture.size}
+            height={texture.size}
+            preserveAspectRatio="xMidYMid slice"
+          />
+        </pattern>
+      ))}
+    </>
+  );
 }
 
 function cloneShape(shape) {
@@ -364,11 +395,17 @@ function EditorShape({ shape, selected }) {
 
   const cfg = SHAPE_CFG[shape.kind];
   if (cfg) {
+    const fill = cfg.texture ? `url(#${cfg.texture})` : cfg.fill;
+    const textureOpacity = cfg.texture ? (selected ? 1 : 0.96) : (selected ? 0.95 : 0.8);
     return (
       <g data-shape-id={shape.id}>
         <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h}
-          fill={cfg.fill} fillOpacity={selected ? 0.95 : 0.8}
+          fill={fill} fillOpacity={textureOpacity}
           stroke={selected ? '#3288e0' : cfg.stroke} strokeWidth={selected ? 2 : 1.2} rx="2" />
+        {cfg.texture && (
+          <rect x={shape.x} y={shape.y} width={shape.w} height={shape.h}
+            fill={cfg.fill} opacity={selected ? 0.12 : 0.18} rx="2" pointerEvents="none" />
+        )}
         {shape.kind === 'escada' && shape.w > 40 && shape.h > 40 && (
           <g pointerEvents="none">
             {Array.from({ length: Math.floor(shape.h / 14) }, (_, i) => (
@@ -382,11 +419,12 @@ function EditorShape({ shape, selected }) {
         {shape.kind === 'elevador' && (
           <g pointerEvents="none">
             <text x={shape.x + shape.w / 2} y={shape.y + shape.h / 2 + 4}
-              textAnchor="middle" fontSize={18} fill={cfg.stroke} style={{ userSelect: 'none' }}>↕</text>
+              textAnchor="middle" fontSize={18} fill={cfg.stroke} style={{ userSelect: 'none' }}>⇅</text>
           </g>
         )}
         <text x={shape.x + shape.w / 2} y={shape.y + shape.h / 2 + 4}
-          textAnchor="middle" fontSize={10} fontWeight="600" fill="#374151"
+          textAnchor="middle" fontSize={10} fontWeight="700" fill="#263241"
+          stroke="rgba(255,255,255,0.72)" strokeWidth="3" paintOrder="stroke"
           style={{ pointerEvents: 'none', userSelect: 'none', opacity: shape.kind === 'elevador' ? 0 : 1 }}>
           {shape.name || cfg.label}
         </text>
@@ -697,6 +735,7 @@ function ReadOnlyFloorPlan({ shapes, apartments, canvasW, canvasH, onSelectAp })
         }}
         onWheel={handleWheel}>
         <defs>
+          <FloorPlanTextureDefs />
           <pattern id="ro-grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
             <path d={`M${GRID} 0L0 0L0 ${GRID}`} fill="none" stroke="rgba(180,210,255,0.12)" strokeWidth="0.5" />
           </pattern>
@@ -1422,6 +1461,7 @@ export function FloorPlanEditor({
             onWheel={handleWheel}
           >
             <defs>
+              <FloorPlanTextureDefs />
               <pattern id="fpe-grid" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
                 <path d={`M${GRID} 0L0 0L0 ${GRID}`} fill="none" stroke="rgba(180,210,255,0.13)" strokeWidth="0.5" />
               </pattern>
