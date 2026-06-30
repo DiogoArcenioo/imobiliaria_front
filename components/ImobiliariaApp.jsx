@@ -403,11 +403,11 @@ export default function ImobiliariaApp() {
   }, []);
 
   useEffect(() => {
-    if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["dashboard", "predios", "vendas"])) fetchPredios();
+    if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["predios", "vendas"])) fetchPredios();
   }, [fetchPredios, user, selectedEmpresa]);
 
   useEffect(() => {
-    if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["dashboard", "locacoes", "comercial"])) fetchLocacoes();
+    if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["locacoes"])) fetchLocacoes();
   }, [fetchLocacoes, user, selectedEmpresa]);
 
   useEffect(() => {

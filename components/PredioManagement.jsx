@@ -7,6 +7,7 @@ import { ApartmentCard } from './ApartmentCard';
 import { formatCpfCnpj } from './ClienteManagement';
 import { EncerrarLocacaoDialog, LocacaoDialog, LocacoesPanel } from './LocacoesPanel';
 import { createLocacao, encerrarLocacao, getLocacoes, getLocacoesResumo } from '../lib/api';
+import { userHasModule } from '../lib/modules';
 
 function clientLabel(c) {
   if (!c) return '';
@@ -160,13 +161,14 @@ export function PredioManagement({
   if (!predio) return null;
 
   const canEdit = user && ['admin', 'gerente'].includes(user.role);
+  const canSeeLocacoes = !user || user.role !== 'vendedor' || userHasModule(user, 'locacoes');
 
   const activeAndar = selectedFloor != null
     ? predio.andares?.find((a) => a.numero === selectedFloor)
     : null;
 
   const loadLocacoes = useCallback(async (status = locacoesStatusFilter) => {
-    if (!predio?.id) return;
+    if (!predio?.id || !canSeeLocacoes) return;
     setLocacoesLoading(true);
     try {
       const filters = status === 'todos' ? { predioId: predio.id } : { predioId: predio.id, status };
@@ -179,11 +181,15 @@ export function PredioManagement({
     } finally {
       setLocacoesLoading(false);
     }
-  }, [predio?.id, locacoesStatusFilter]);
+  }, [predio?.id, locacoesStatusFilter, canSeeLocacoes]);
 
   useEffect(() => {
     loadLocacoes().catch(() => {});
   }, [loadLocacoes]);
+
+  useEffect(() => {
+    if (!canSeeLocacoes && section === 'locacoes') setSection('predio');
+  }, [canSeeLocacoes, section]);
 
   const handleFloorClick = (numero) => {
     setSelectedFloor(numero);
@@ -321,15 +327,17 @@ export function PredioManagement({
           <button className={section === 'predio' ? 'active' : ''} onClick={() => setSection('predio')}>
             Visão do prédio
           </button>
-          <button className={section === 'locacoes' ? 'active' : ''} onClick={() => setSection('locacoes')}>
-            Locações
-            {locacoesResumo.total_ativas > 0 && <span>{locacoesResumo.total_ativas}</span>}
-          </button>
+          {canSeeLocacoes && (
+            <button className={section === 'locacoes' ? 'active' : ''} onClick={() => setSection('locacoes')}>
+              Locações
+              {locacoesResumo.total_ativas > 0 && <span>{locacoesResumo.total_ativas}</span>}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Main content */}
-      {section === 'locacoes' ? (
+      {section === 'locacoes' && canSeeLocacoes ? (
         <LocacoesPanel
           locacoes={locacoes}
           resumo={locacoesResumo}

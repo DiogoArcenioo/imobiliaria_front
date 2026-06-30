@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { fmtBRL } from '../lib/data';
+import { userHasModule } from '../lib/modules';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 
 function ApPriceEditor({ preco, area, canEdit, defaultMode = 'm2', onSave }) {
@@ -173,9 +174,12 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
 
   const status = AP_STATUS_COLORS[ap.status] || AP_STATUS_COLORS.disponivel;
   const isLocked = ap.status === 'vendido' || ap.status === 'alugado';
-  const canManage = user && ['admin', 'gerente'].includes(user.role);
+  const isAdminOrManager = user && ['admin', 'gerente'].includes(user.role);
+  const canSell = isAdminOrManager || (user?.role === 'vendedor' && userHasModule(user, 'predios'));
+  const canRent = isAdminOrManager || (user?.role === 'vendedor' && userHasModule(user, 'predios') && userHasModule(user, 'locacoes'));
+  const canManage = isAdminOrManager || canSell || canRent;
   const canReserve = user && ['admin', 'gerente', 'vendedor'].includes(user.role);
-  const canEditPrice = !!onUpdatePrice && canManage && !isLocked;
+  const canEditPrice = !!onUpdatePrice && isAdminOrManager && !isLocked;
   const hasSalePrice = Number(ap.preco_venda) > 0 && ['venda', 'ambos'].includes(ap.tipo || 'venda');
   const hasRentPrice = Number(ap.preco_aluguel) > 0 && ['aluguel', 'ambos'].includes(ap.tipo);
 
@@ -282,22 +286,22 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
               Reservar
             </button>
           )}
-          {!isLocked && ap.status === 'disponivel' && canManage && ['venda', 'ambos'].includes(ap.tipo || 'venda') && (
+          {!isLocked && ap.status === 'disponivel' && canSell && ['venda', 'ambos'].includes(ap.tipo || 'venda') && (
             <button className="apc-btn apc-btn-sell" disabled={actionLoading} onClick={() => handleAction('vendido')}>
               Vender
             </button>
           )}
-          {!isLocked && ap.status === 'disponivel' && canManage && (
+          {!isLocked && ap.status === 'disponivel' && canRent && (
             <button className="apc-btn apc-btn-rent" disabled={actionLoading} onClick={() => handleAction('alugado')}>
               Alugar
             </button>
           )}
-          {ap.status === 'reservado' && canManage && ['venda', 'ambos'].includes(ap.tipo || 'venda') && (
+          {ap.status === 'reservado' && canSell && ['venda', 'ambos'].includes(ap.tipo || 'venda') && (
             <button className="apc-btn apc-btn-sell" disabled={actionLoading} onClick={() => handleAction('vendido')}>
               Concluir venda
             </button>
           )}
-          {ap.status === 'reservado' && canManage && ['aluguel', 'ambos'].includes(ap.tipo) && (
+          {ap.status === 'reservado' && canRent && ['aluguel', 'ambos'].includes(ap.tipo) && (
             <button className="apc-btn apc-btn-rent" disabled={actionLoading} onClick={() => handleAction('alugado')}>
               Concluir aluguel
             </button>

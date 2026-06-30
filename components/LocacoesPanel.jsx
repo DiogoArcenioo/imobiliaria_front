@@ -7,6 +7,7 @@ import {
   getLocacaoPagamentos,
   registrarPagamentoLocacao,
 } from '../lib/api';
+import { userHasModule } from '../lib/modules';
 import { formatCpfCnpj } from './ClienteManagement';
 
 function clientLabel(client) {
@@ -637,7 +638,7 @@ export function LocacoesPanel({
   useEffect(() => { setLocacoes(initialLocacoes); }, [initialLocacoes]);
 
   const active = statusFilter === 'ativa';
-  const canManage = ['admin', 'gerente'].includes(user?.role);
+  const canManage = ['admin', 'gerente'].includes(user?.role) || (user?.role === 'vendedor' && userHasModule(user, 'locacoes'));
   const tableTitle = statusFilter === 'ativa'
     ? 'Locações ativas'
     : statusFilter === 'encerrada'

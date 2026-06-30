@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { fmtBRL, fmtBRLShort, statusLabel } from '../lib/data';
 import { computeMetrics, flattenLots } from '../lib/api';
+import { userHasModule } from '../lib/modules';
 import { STATUS_COLORS } from './MapView';
 
 export const Dashboard = ({
@@ -24,6 +25,10 @@ export const Dashboard = ({
 }) => {
   const isGerente = user?.role === 'gerente';
   const isVendedor = user?.role === 'vendedor';
+  const canSeeLoteamentos = !isVendedor || userHasModule(user, 'loteamentos');
+  const canSeeLotes = !isVendedor || userHasModule(user, 'lotes') || canSeeLoteamentos;
+  const canSeePredios = !isVendedor || userHasModule(user, 'predios');
+  const canSeeLocacoes = !isVendedor || userHasModule(user, 'locacoes');
   const [showInativos, setShowInativos] = useState(false);
 
   const activeLoteamentos = loteamentos.filter((lt) => lt.ativo !== false);
@@ -149,13 +154,17 @@ export const Dashboard = ({
           sub={`${totalVendidos} unidades`}
           accent
         />
-        <div className="db-stat-div" />
-        <StatChip
-          label="Lotes disponíveis"
-          value={metrics.disp}
-          sub={`de ${metrics.total} cadastrados`}
-        />
-        {predios.length > 0 && (
+        {canSeeLotes && (
+          <>
+            <div className="db-stat-div" />
+            <StatChip
+              label="Lotes disponíveis"
+              value={metrics.disp}
+              sub={`de ${metrics.total} cadastrados`}
+            />
+          </>
+        )}
+        {canSeeLocacoes && (
           <>
             <div className="db-stat-div" />
             <StatChip
@@ -247,7 +256,7 @@ export const Dashboard = ({
         <aside className="db-sidebar">
 
           {/* Prédios */}
-          {predios.length > 0 && (
+          {canSeePredios && predios.length > 0 && (
             <div className="db-sidebar-card">
               <div className="sec-header" style={{ marginBottom: 12 }}>
                 <h3 className="sec-title" style={{ fontSize: 15 }}>Prédios</h3>
@@ -276,6 +285,7 @@ export const Dashboard = ({
           )}
 
           {/* Loteamentos */}
+          {canSeeLoteamentos && (
           <div className="db-sidebar-card">
             <div className="sec-header" style={{ marginBottom: 12 }}>
               <h3 className="sec-title" style={{ fontSize: 15 }}>Loteamentos</h3>
@@ -332,6 +342,7 @@ export const Dashboard = ({
               </div>
             )}
           </div>
+          )}
         </aside>
       </div>
     </div>
