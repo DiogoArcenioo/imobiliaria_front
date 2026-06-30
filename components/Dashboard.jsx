@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { fmtBRL, fmtBRLShort, statusLabel } from '../lib/data';
@@ -14,6 +14,7 @@ export const Dashboard = ({
   onOpenEditor,
   onRefresh,
   onOpenPredios,
+  onOpenLoteamentos,
   canCreateLoteamento = false,
   canEditLoteamento = false,
   user = null,
@@ -22,6 +23,7 @@ export const Dashboard = ({
   onSelectEmpresa,
 }) => {
   const isGerente = user?.role === 'gerente';
+  const isVendedor = user?.role === 'vendedor';
   const [showInativos, setShowInativos] = useState(false);
 
   const activeLoteamentos = loteamentos.filter((lt) => lt.ativo !== false);
@@ -30,23 +32,57 @@ export const Dashboard = ({
   const lots = flattenLots(loteamentos);
   const allSoldLots = lots.filter((lot) => lot.status === 'vendido');
 
-  const isVendedor = user?.role === 'vendedor';
-  const soldLots = isVendedor
+  const soldLots = (isVendedor
     ? allSoldLots.filter((lot) => lot.cliente_vinculado_por === user?.id)
-    : allSoldLots;
+    : allSoldLots
+  ).sort((a, b) => new Date(b.vendido_em || b.atualizado_em || 0) - new Date(a.vendido_em || a.atualizado_em || 0));
+
   const myVen = soldLots.length;
   const myVgvVendido = soldLots.reduce((sum, lot) => sum + (Number(lot.preco) || 0), 0);
-  const displayMetrics = isVendedor ? { ...metrics, ven: myVen, vgvVendido: myVgvVendido } : metrics;
 
   const allAps = predios.flatMap((p) => (p.andares || []).flatMap((a) => a.apartamentos || []));
-  const soldAps = isVendedor
+  const soldAps = (isVendedor
     ? allAps.filter((ap) => ap.status === 'vendido' && ap.cliente_vinculado_por === user?.id)
-    : allAps.filter((ap) => ap.status === 'vendido');
+    : allAps.filter((ap) => ap.status === 'vendido')
+  ).sort((a, b) => new Date(b.vendido_em || b.atualizado_em || 0) - new Date(a.vendido_em || a.atualizado_em || 0));
+
   const soldApsVgv = soldAps.reduce((s, ap) => s + (Number(ap.preco_venda) || 0), 0);
   const totalVendidos = (isVendedor ? myVen : metrics.ven) + soldAps.length;
   const totalVgvVendido = (isVendedor ? myVgvVendido : metrics.vgvVendido) + soldApsVgv;
 
-  // Admin sem empresa selecionada: tela de seleção
+  // Merge and sort all sales by date
+  const allSales = [
+    ...soldLots.map((l) => ({
+      key: `lote-${l.db_id}`,
+      tipo: 'Lote',
+      codigo: l.id,
+      projeto: l.loteamentoNome || '—',
+      cliente: l.cliente?.nome || null,
+      valor: Number(l.preco) || 0,
+      data: l.vendido_em || l.atualizado_em,
+      empreendimentoId: l.loteamentoId,
+    })),
+    ...soldAps.map((a) => ({
+      key: `apto-${a.id}`,
+      tipo: 'Apto',
+      codigo: a.ap_id,
+      projeto: predios.find((p) => p.id === a.predio_id)?.nome || '—',
+      cliente: a.cliente?.nome || null,
+      valor: Number(a.preco_venda) || 0,
+      data: a.vendido_em || a.criado_em,
+      empreendimentoId: null,
+    })),
+  ].sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0));
+
+  const firstName = (user?.nome || user?.login || 'você').split(' ')[0];
+  const greeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return `Bom dia, ${firstName}.`;
+    if (h < 18) return `Boa tarde, ${firstName}.`;
+    return `Boa noite, ${firstName}.`;
+  };
+
+  // Admin sem empresa: tela de seleção
   if (user?.role === 'admin' && !selectedEmpresa) {
     return (
       <div className="dash">
@@ -59,23 +95,14 @@ export const Dashboard = ({
             </p>
           </div>
         </header>
-
         {empresas.length === 0 ? (
-          <div className="lot-cards-empty">
-            <p>Nenhuma empresa cadastrada no sistema.</p>
-          </div>
+          <div className="lot-cards-empty"><p>Nenhuma empresa cadastrada no sistema.</p></div>
         ) : (
           <div className="admin-empresa-grid">
             {empresas.map((emp) => (
-              <button
-                key={emp.id}
-                className="admin-empresa-card"
-                onClick={() => onSelectEmpresa?.(emp)}
-              >
+              <button key={emp.id} className="admin-empresa-card" onClick={() => onSelectEmpresa?.(emp)}>
                 <div className="aec-nome">{emp.nome}</div>
-                <div className="aec-meta">
-                  {[emp.cidade, emp.estado].filter(Boolean).join(' / ') || 'Local não informado'}
-                </div>
+                <div className="aec-meta">{[emp.cidade, emp.estado].filter(Boolean).join(' / ') || 'Local não informado'}</div>
                 {emp.cnpj && <div className="aec-cnpj">{emp.cnpj}</div>}
               </button>
             ))}
@@ -87,24 +114,21 @@ export const Dashboard = ({
 
   return (
     <div className="dash">
+
+      {/* ── Header ──────────────────────────────────────────────── */}
       <header className="dash-header">
         <div>
           <div className="dash-eyebrow">
             {user?.role === 'admin' && selectedEmpresa
               ? `EMPRESA: ${selectedEmpresa.nome}`
-              : `PAINEL · ${new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+              : new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).toUpperCase()}
           </div>
-          <h1 className="dash-title">{isVendedor ? 'Minhas vendas e desempenho.' : 'Cadastro e vendas de loteamentos.'}</h1>
+          <h1 className="dash-title">{greeting()}</h1>
           <p className="dash-sub">
-            {loading
-              ? 'Carregando loteamentos...'
-              : loteamentos.length === 0
-              ? canCreateLoteamento
-                ? 'Nenhum loteamento cadastrado. Crie o primeiro para começar.'
-                : 'Nenhum loteamento cadastrado para esta empresa.'
-              : isVendedor
-            ? <>Você vendeu <b>{totalVendidos} unidades</b> — {fmtBRLShort(totalVgvVendido)} em VGV realizado.</>
-            : <>Você tem <b>{metrics.total} lotes cadastrados</b> e {totalVendidos} unidades vendidas (lotes + apartamentos).</>}
+            {loading ? 'Carregando dados...' : isVendedor
+              ? <>{totalVendidos > 0 ? <><b>{totalVendidos} unidades vendidas</b> · {fmtBRLShort(totalVgvVendido)} em vendas</> : 'Nenhuma venda registrada ainda.'}</>
+              : <><b>{totalVendidos} unidades vendidas</b> · {fmtBRLShort(totalVgvVendido)} em valor realizado</>
+            }
           </p>
         </div>
         {canCreateLoteamento && (
@@ -117,203 +141,216 @@ export const Dashboard = ({
         )}
       </header>
 
-      <section className="metric-grid">
-        {isVendedor ? (
+      {/* ── Stats strip ─────────────────────────────────────────── */}
+      <div className="db-stats-strip">
+        <StatChip
+          label="Total vendido"
+          value={fmtBRLShort(totalVgvVendido)}
+          sub={`${totalVendidos} unidades`}
+          accent
+        />
+        <div className="db-stat-div" />
+        <StatChip
+          label="Lotes disponíveis"
+          value={metrics.disp}
+          sub={`de ${metrics.total} cadastrados`}
+        />
+        {predios.length > 0 && (
           <>
-            <MetricCard
-              label="Minhas vendas"
-              value={totalVendidos}
-              delta={totalVendidos > 0 ? fmtBRLShort(totalVgvVendido) : '—'}
-              sub={soldAps.length > 0 ? `${myVen} lotes · ${soldAps.length} aptos` : 'VGV realizado por você'}
-              big
-            />
-            <MetricCard
-              label="Loteamentos"
-              value={loteamentos.length}
-              delta={metrics.total > 0 ? `${metrics.total} lotes` : '—'}
-              sub="empreendimentos no cadastro"
-              color="blue"
-            />
-            <MetricCard
-              label="Disponíveis"
-              value={metrics.disp}
-              delta={metrics.total > 0 ? `${Math.round((metrics.disp / metrics.total) * 100)}%` : '—'}
-              sub="lotes em estoque"
-              color="emerald"
-            />
-            <MetricCard
-              label="Meu VGV"
-              value={fmtBRLShort(totalVgvVendido)}
-              delta={totalVendidos > 0 ? `${totalVendidos} unid.` : '—'}
-              sub="total vendido por você"
-              color="red"
-            />
-          </>
-        ) : (
-          <>
-            <MetricCard
-              label="VGV cadastrado"
-              value={fmtBRLShort(metrics.vgvTotal)}
-              delta={loteamentos.length > 0 ? `${loteamentos.length} loteamentos` : '—'}
-              sub={`${metrics.total} lotes cadastrados`}
-              big
-            />
-            <MetricCard
-              label="Loteamentos"
-              value={loteamentos.length}
-              delta={metrics.total > 0 ? `${metrics.total} lotes` : '—'}
-              sub="empreendimentos no cadastro"
-              color="blue"
-            />
-            <MetricCard
-              label="Disponíveis"
-              value={metrics.disp}
-              delta={metrics.total > 0 ? `${Math.round((metrics.disp / metrics.total) * 100)}%` : '—'}
-              sub="lotes em estoque"
-              color="emerald"
-            />
-            <MetricCard
-              label="Vendidos"
-              value={totalVendidos}
-              delta={totalVendidos > 0 ? fmtBRLShort(totalVgvVendido) : '—'}
-              sub={soldAps.length > 0 ? `${metrics.ven} lotes · ${soldAps.length} aptos` : 'VGV realizado'}
-              color="red"
-            />
-            {predios.length > 0 && (
-              <MetricCard
-                label="Prédios"
-                value={predios.length}
-                delta={predios.reduce((s, p) => s + (p.stats?.total || 0), 0) + ' aptos'}
-                sub="cadastrados no sistema"
-                color="blue"
-              />
-            )}
-            <MetricCard
+            <div className="db-stat-div" />
+            <StatChip
               label="Receita de aluguéis"
               value={fmtBRLShort(locacoesResumo.receita_mensal || 0)}
-              delta={`${locacoesResumo.total_ativas || 0} contratos`}
-              sub="receita mensal contratada"
-              color="emerald"
+              sub={`${locacoesResumo.total_ativas || 0} contratos ativos`}
             />
-            <MetricCard
-              label="Ocupação de locações"
+            <div className="db-stat-div" />
+            <StatChip
+              label="Ocupação locações"
               value={`${locacoesResumo.ocupacao_percentual || 0}%`}
-              delta={`${locacoesResumo.unidades_vagas || 0} vagas`}
-              sub="apartamentos disponíveis para locação"
-              color="blue"
+              sub={`${locacoesResumo.unidades_vagas || 0} vagas disponíveis`}
             />
           </>
         )}
-      </section>
+        <div style={{ flex: 1 }} />
+        <button className="db-refresh-btn" onClick={onRefresh} title="Atualizar">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M14 8A6 6 0 1 1 8 2a6 6 0 0 1 4.24 1.76L14 2v4h-4l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Atualizar
+        </button>
+      </div>
 
-      {predios.length > 0 && (
-        <section className="dash-predios-summary">
-          <header className="sec-header">
-            <h2 className="sec-title">Prédios</h2>
-            <button className="sec-tool-btn" onClick={onOpenPredios}>
-              Ver todos
-            </button>
-          </header>
-          <div className="predios-mini-list">
-            {predios.slice(0, 3).map((p) => {
-              const stats = p.stats || {};
-              const total = stats.total || 0;
-              const ocupPct = total > 0 ? Math.round(((total - (stats.disponivel || 0)) / total) * 100) : 0;
-              return (
-                <button key={p.id} className="predio-mini-card" onClick={onOpenPredios}>
-                  <div className="pmc-name">{p.nome}</div>
-                  <div className="pmc-info">{p.num_andares} andares · {total} aptos</div>
-                  <div className="pmc-bar">
-                    <div className="pmc-bar-fill" style={{ width: `${ocupPct}%`, background: p.cor || '#3288e0' }} />
-                  </div>
-                  <div className="pmc-pct">{ocupPct}% ocupado</div>
-                </button>
-              );
-            })}
+      {/* ── Main layout ─────────────────────────────────────────── */}
+      <div className="db-main-grid">
+
+        {/* Sales feed — protagonista */}
+        <section className="db-sales-card">
+          <div className="db-sales-head">
+            <div>
+              <div className="dash-eyebrow" style={{ marginBottom: 2 }}>ATIVIDADE</div>
+              <h2 className="sec-title">{isVendedor ? 'Minhas vendas' : 'Últimas vendas'}</h2>
+            </div>
+            <div className="db-sales-vgv">
+              <span>Total</span>
+              <strong>{fmtBRLShort(totalVgvVendido)}</strong>
+            </div>
           </div>
-        </section>
-      )}
 
-      <div className="dash-split">
-        <section className="dash-loteamentos">
-          <header className="sec-header">
-            <h2 className="sec-title">Loteamentos</h2>
-            <div className="sec-tools">
-              {isGerente && loteamentos.some((lt) => lt.ativo === false) && (
-                <button
-                  className="sec-tool-btn"
-                  onClick={() => setShowInativos((v) => !v)}
-                  style={{ color: showInativos ? 'var(--accent)' : undefined }}
-                  title={showInativos ? 'Ocultar inativos' : 'Mostrar inativos'}
-                >
-                  {showInativos ? 'Ocultar inativos' : 'Ver inativos'}
-                </button>
-              )}
-              <button className="sec-tool-btn" onClick={onRefresh} title="Atualizar">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-                  <path d="M14 8A6 6 0 1 1 8 2a6 6 0 0 1 4.24 1.76L14 2v4h-4l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Atualizar
-              </button>
-            </div>
-          </header>
-
-          {loading ? (
-            <div className="lot-cards-loading">
-              <div className="loading-card" />
-              <div className="loading-card" />
-            </div>
-          ) : displayedLoteamentos.length === 0 ? (
-            <div className="lot-cards-empty">
-              <p>Nenhum loteamento encontrado.</p>
-              {canCreateLoteamento && (
-                <button className="qa-btn qa-btn-primary" style={{ marginTop: 12 }} onClick={() => onOpenEditor?.(null)}>
-                  Criar primeiro loteamento
-                </button>
-              )}
+          {allSales.length === 0 ? (
+            <div className="db-sales-empty">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.3">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/>
+              </svg>
+              <p>Nenhuma venda registrada ainda.</p>
             </div>
           ) : (
-            <div className="lot-cards">
-              {displayedLoteamentos.map((loteamento) => (
-                <LoteamentoCard
-                  key={loteamento.id}
-                  loteamento={loteamento}
-                  onClick={() => onOpenLoteamento(loteamento.id)}
-                  onEdit={canEditLoteamento ? () => onOpenEditor?.(loteamento) : null}
-                />
+            <div className="db-sales-list">
+              {allSales.slice(0, 12).map((sale) => (
+                <button
+                  key={sale.key}
+                  className="db-sale-row"
+                  onClick={() => sale.empreendimentoId && onOpenLoteamento?.(sale.empreendimentoId)}
+                  style={{ cursor: sale.empreendimentoId ? 'pointer' : 'default' }}
+                >
+                  <div className="db-sale-badge" data-tipo={sale.tipo}>
+                    {sale.tipo === 'Lote' ? 'L' : 'A'}
+                  </div>
+                  <div className="db-sale-body">
+                    <div className="db-sale-top">
+                      <span className="db-sale-codigo">{sale.tipo} {sale.codigo}</span>
+                      <span className="db-sale-projeto">{sale.projeto}</span>
+                    </div>
+                    {sale.cliente && (
+                      <div className="db-sale-cliente">{sale.cliente}</div>
+                    )}
+                  </div>
+                  <div className="db-sale-right">
+                    <div className="db-sale-valor">{fmtBRL(sale.valor)}</div>
+                    <div className="db-sale-data">
+                      {sale.data
+                        ? new Date(sale.data).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+                        : '—'}
+                    </div>
+                  </div>
+                </button>
               ))}
+              {allSales.length > 12 && (
+                <div className="db-sales-more">
+                  +{allSales.length - 12} vendas — <span onClick={() => {}}>ver em Vendas</span>
+                </div>
+              )}
             </div>
           )}
         </section>
 
-        <aside className="dash-side">
-          <SoldLotsPanel soldLots={soldLots} onOpenLoteamento={onOpenLoteamento} isVendedor={isVendedor} />
+        {/* Sidebar compacta */}
+        <aside className="db-sidebar">
+
+          {/* Prédios */}
+          {predios.length > 0 && (
+            <div className="db-sidebar-card">
+              <div className="sec-header" style={{ marginBottom: 12 }}>
+                <h3 className="sec-title" style={{ fontSize: 15 }}>Prédios</h3>
+                <button className="sec-tool-btn" onClick={onOpenPredios}>Ver todos</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {predios.slice(0, 4).map((p) => {
+                  const stats = p.stats || {};
+                  const total = stats.total || 0;
+                  const ocupPct = total > 0 ? Math.round(((total - (stats.disponivel || 0)) / total) * 100) : 0;
+                  return (
+                    <button key={p.id} className="db-lt-row" onClick={onOpenPredios}>
+                      <div className="db-lt-info">
+                        <div className="db-lt-nome">{p.nome}</div>
+                        <div className="db-lt-meta">{total} aptos · {p.num_andares || 0} andares</div>
+                      </div>
+                      <div className="db-lt-right">
+                        <div className="db-lt-pct" style={{ color: ocupPct > 0 ? '#3288e0' : 'var(--text-muted)' }}>{ocupPct}%</div>
+                        <div className="db-lt-sub">ocupado</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Loteamentos */}
+          <div className="db-sidebar-card">
+            <div className="sec-header" style={{ marginBottom: 12 }}>
+              <h3 className="sec-title" style={{ fontSize: 15 }}>Loteamentos</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {isGerente && loteamentos.some((lt) => lt.ativo === false) && (
+                  <button className="sec-tool-btn" onClick={() => setShowInativos((v) => !v)} style={{ color: showInativos ? 'var(--accent)' : undefined }}>
+                    {showInativos ? 'Ocultar inativos' : 'Ver inativos'}
+                  </button>
+                )}
+                <button className="sec-tool-btn" onClick={onOpenLoteamentos}>Ver todos</button>
+              </div>
+            </div>
+            {loading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="loading-card" style={{ height: 52 }} />
+                <div className="loading-card" style={{ height: 52 }} />
+              </div>
+            ) : displayedLoteamentos.length === 0 ? (
+              <div className="lot-cards-empty" style={{ padding: '16px 0' }}>
+                <p>Nenhum loteamento encontrado.</p>
+                {canCreateLoteamento && (
+                  <button className="qa-btn qa-btn-primary" style={{ marginTop: 10 }} onClick={() => onOpenEditor?.(null)}>
+                    Criar primeiro loteamento
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {displayedLoteamentos.map((lt) => {
+                  const ltLots = lt.lots || [];
+                  const cnt = { disponivel: 0, reservado: 0, vendido: 0 };
+                  for (const l of ltLots) cnt[l.status] = (cnt[l.status] || 0) + 1;
+                  const pct = ltLots.length > 0 ? Math.round((cnt.vendido / ltLots.length) * 100) : 0;
+                  const inativo = lt.ativo === false;
+                  return (
+                    <button key={lt.id} className="db-lt-row" onClick={() => onOpenLoteamento(lt.id)} style={inativo ? { opacity: 0.6 } : undefined}>
+                      <div className="db-lt-info">
+                        <div className="db-lt-nome">
+                          {lt.nome}
+                          {inativo && <span className="db-lt-inativo">INATIVO</span>}
+                        </div>
+                        <div className="db-lt-meta">
+                          {[lt.cidade, lt.estado].filter(Boolean).join(' · ') || 'Local não informado'}
+                          {' · '}{ltLots.length} lotes
+                        </div>
+                      </div>
+                      <div className="db-lt-right">
+                        <div className="db-lt-pct" style={{ color: pct > 0 ? '#ef4444' : 'var(--text-muted)' }}>{pct}%</div>
+                        <div className="db-lt-sub">vendido</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </aside>
       </div>
     </div>
   );
 };
 
-function MetricCard({ label, value, delta, sub, color, big }) {
-  const colorMap = {
-    emerald: 'var(--accent)',
-    amber: 'var(--amber)',
-    red: 'var(--red)',
-    blue: 'var(--blue)',
-  };
-  const accent = colorMap[color] || 'var(--accent)';
+// ── Componentes internos ─────────────────────────────────────────────────────
+
+function StatChip({ label, value, sub, accent }) {
   return (
-    <div className={'metric-card' + (big ? ' metric-card-big' : '')}>
-      <div className="mc-top">
-        <span className="mc-label">{label}</span>
-        <span className="mc-delta" style={{ color: accent }}>{delta}</span>
-      </div>
-      <div className="mc-value">{value}</div>
-      <div className="mc-sub">{sub}</div>
-      <div className="mc-rail" style={{ background: accent }} />
+    <div className="db-stat-chip">
+      <div className="db-stat-label">{label}</div>
+      <div className="db-stat-value" style={accent ? { color: 'var(--accent)' } : undefined}>{value}</div>
+      <div className="db-stat-sub">{sub}</div>
     </div>
   );
 }
+
+// ── Exportados (usados em outros módulos) ────────────────────────────────────
 
 export function LoteamentoCard({ loteamento, onClick, onEdit, onToggleAtivo, toggling, canShare }) {
   const lots = loteamento.lots || [];
@@ -404,36 +441,19 @@ export function LoteamentoCard({ loteamento, onClick, onEdit, onToggleAtivo, tog
         </div>
 
         <div className="lcr-stats">
-          <div className="lcr-stat">
-            <span className="lcr-stat-k">Lotes</span>
-            <span className="lcr-stat-v">{lots.length}</span>
-          </div>
-          <div className="lcr-stat">
-            <span className="lcr-stat-k">Área total</span>
-            <span className="lcr-stat-v">{loteamento.area_total || '—'}</span>
-          </div>
-          <div className="lcr-stat">
-            <span className="lcr-stat-k">Disponíveis</span>
-            <span className="lcr-stat-v">{counts.disponivel}</span>
-          </div>
-          <div className="lcr-stat">
-            <span className="lcr-stat-k">Vendidos</span>
-            <span className="lcr-stat-v">{counts.vendido}</span>
-          </div>
+          <div className="lcr-stat"><span className="lcr-stat-k">Lotes</span><span className="lcr-stat-v">{lots.length}</span></div>
+          <div className="lcr-stat"><span className="lcr-stat-k">Área total</span><span className="lcr-stat-v">{loteamento.area_total || '—'}</span></div>
+          <div className="lcr-stat"><span className="lcr-stat-k">Disponíveis</span><span className="lcr-stat-v">{counts.disponivel}</span></div>
+          <div className="lcr-stat"><span className="lcr-stat-k">Vendidos</span><span className="lcr-stat-v">{counts.vendido}</span></div>
         </div>
 
         {lots.length > 0 && (
           <div className="lcr-progress">
-            <div className="lcr-prog-head">
-              <span>Vendido</span>
-              <b>{pctSold}%</b>
-            </div>
+            <div className="lcr-prog-head"><span>Vendido</span><b>{pctSold}%</b></div>
             <div className="lcr-prog-bar">
-              <div className="lcr-prog-seg lcr-prog-vendido" style={{ flex: counts.vendido || 0 }} title={`${counts.vendido} vendidos`} />
-              {counts.reservado > 0 && (
-                <div className="lcr-prog-seg lcr-prog-reservado" style={{ flex: counts.reservado }} title={`${counts.reservado} reservados`} />
-              )}
-              <div className="lcr-prog-seg lcr-prog-disponivel" style={{ flex: counts.disponivel || 0 }} title={`${counts.disponivel} disponíveis`} />
+              <div className="lcr-prog-seg lcr-prog-vendido" style={{ flex: counts.vendido || 0 }} />
+              {counts.reservado > 0 && <div className="lcr-prog-seg lcr-prog-reservado" style={{ flex: counts.reservado }} />}
+              <div className="lcr-prog-seg lcr-prog-disponivel" style={{ flex: counts.disponivel || 0 }} />
             </div>
             <div className="lcr-prog-legend">
               <span><i style={{ background: '#ef4444' }} /> {counts.vendido || 0} vendidos</span>
@@ -466,17 +486,12 @@ export function MiniMap({ loteamento }) {
           <image href="/textures/lago.jpg" x="0" y="0" width="512" height="512" />
         </pattern>
       </defs>
-
-      {/* Background */}
       <rect width={width} height={height} fill={`url(#mm-fundo-${uid})`} />
-
-      {/* Roads — sidewalk outer + asphalt inner */}
       {(loteamento.roads || []).map((road, i) => (
         road.kind === 'rect' && (
           <g key={i}>
             <rect x={road.x} y={road.y} width={road.w} height={road.h} fill="#ccc8b8" />
-            <rect x={road.x + road.w * 0.14} y={road.y + road.h * 0.14}
-              width={road.w * 0.72} height={road.h * 0.72} fill="#4a4d4f" />
+            <rect x={road.x + road.w * 0.14} y={road.y + road.h * 0.14} width={road.w * 0.72} height={road.h * 0.72} fill="#4a4d4f" />
           </g>
         )
       ))}
@@ -489,62 +504,29 @@ export function MiniMap({ loteamento }) {
           </g>
         );
       })}
-
-      {/* Landmarks */}
       {(loteamento.landmarks || []).map((lm, i) => {
         if (lm.kind === 'lake') {
           const lf = `url(#mm-lago-${uid})`;
           const E = 10;
-          if (lm.lakeShape === 'rect') return (
-            <g key={i}>
-              <rect x={lm.x - E} y={lm.y - E} width={lm.w + E*2} height={lm.h + E*2} fill="#9c7840" rx="8" />
-              <rect x={lm.x} y={lm.y} width={lm.w} height={lm.h} fill={lf} rx="5" />
-            </g>
-          );
-          if (lm.lakeShape === 'poly') {
-            const d = lm.points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
-            return (
-              <g key={i}>
-                <path d={d} fill="#9c7840" stroke="#9c7840" strokeWidth={E * 2} strokeLinejoin="round" paintOrder="stroke fill" />
-                <path d={d} fill={lf} />
-              </g>
-            );
-          }
-          return (
-            <g key={i}>
-              <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx + E} ry={lm.ry + E} fill="#9c7840" />
-              <ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry} fill={lf} />
-            </g>
-          );
+          if (lm.lakeShape === 'rect') return (<g key={i}><rect x={lm.x - E} y={lm.y - E} width={lm.w + E*2} height={lm.h + E*2} fill="#9c7840" rx="8" /><rect x={lm.x} y={lm.y} width={lm.w} height={lm.h} fill={lf} rx="5" /></g>);
+          if (lm.lakeShape === 'poly') { const d = lm.points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z'; return (<g key={i}><path d={d} fill="#9c7840" stroke="#9c7840" strokeWidth={E * 2} strokeLinejoin="round" paintOrder="stroke fill" /><path d={d} fill={lf} /></g>); }
+          return (<g key={i}><ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx + E} ry={lm.ry + E} fill="#9c7840" /><ellipse cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry} fill={lf} /></g>);
         }
         if (lm.kind === 'praca') {
           const fill = `url(#mm-praca-${uid})`;
           if (lm.pracaShape === 'ellipse') return <ellipse key={i} cx={lm.cx} cy={lm.cy} rx={lm.rx} ry={lm.ry} fill={fill} />;
-          if (lm.pracaShape === 'poly') {
-            const d = lm.points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z';
-            return <path key={i} d={d} fill={fill} />;
-          }
+          if (lm.pracaShape === 'poly') { const d = lm.points.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ') + ' Z'; return <path key={i} d={d} fill={fill} />; }
           return <rect key={i} x={lm.x + 8} y={lm.y + 8} width={(lm.w || 0) - 16} height={(lm.h || 0) - 16} fill={fill} />;
         }
         return null;
       })}
-
-      {/* Trees */}
       {(loteamento.trees || []).map((tree, i) => {
         const [x, y, treeType = 1] = tree;
-        const TREE_CFG = {
-          1: { href: '/textures/trees/tree_01.png', s: 60 },
-          2: { href: '/textures/trees/tree_02.png', s: 90 },
-          3: { href: '/textures/trees/tree_03.png', s: 65 },
-          4: { href: '/textures/trees/tree_04.png', s: 85 },
-          5: { href: '/textures/trees/tree_05.png', s: 75 },
-        };
+        const TREE_CFG = { 1: { href: '/textures/trees/tree_01.png', s: 60 }, 2: { href: '/textures/trees/tree_02.png', s: 90 }, 3: { href: '/textures/trees/tree_03.png', s: 65 }, 4: { href: '/textures/trees/tree_04.png', s: 85 }, 5: { href: '/textures/trees/tree_05.png', s: 75 } };
         const cfg = TREE_CFG[treeType] || TREE_CFG[1];
         const half = cfg.s / 2;
         return <image key={`t-${i}`} href={cfg.href} x={x - half} y={y - half} width={cfg.s} height={cfg.s} />;
       })}
-
-      {/* Lots */}
       {lots.map((lot) => {
         const status = STATUS_COLORS[lot.status] || STATUS_COLORS.disponivel;
         return <polygon key={lot.db_id || lot.id} points={lot.polygon} fill={status.fill} fillOpacity="0.65" stroke={status.stroke} strokeWidth="2" />;
@@ -553,19 +535,15 @@ export function MiniMap({ loteamento }) {
   );
 }
 
-function SoldLotsPanel({ soldLots, onOpenLoteamento, isVendedor }) {
+export function SoldLotsPanel({ soldLots, onOpenLoteamento, isVendedor }) {
   const total = soldLots.reduce((sum, lot) => sum + (Number(lot.preco) || 0), 0);
-
   return (
     <div className="side-card">
       <div className="side-head">
         <h3 className="side-title">{isVendedor ? 'Minhas vendas' : 'Vendas registradas'}</h3>
         <span className="side-link">{soldLots.length} lotes</span>
       </div>
-      <div className="sale-total">
-        <span>VGV vendido</span>
-        <b>{fmtBRLShort(total)}</b>
-      </div>
+      <div className="sale-total"><span>Valor vendido</span><b>{fmtBRLShort(total)}</b></div>
       {soldLots.length === 0 ? (
         <p className="side-empty">{isVendedor ? 'Você ainda não registrou nenhuma venda.' : 'Nenhuma venda registrada nos loteamentos carregados.'}</p>
       ) : (
@@ -588,7 +566,7 @@ function SoldLotsPanel({ soldLots, onOpenLoteamento, isVendedor }) {
   );
 }
 
-function StatusPill({ status }) {
+export function StatusPill({ status }) {
   const colors = STATUS_COLORS[status] || STATUS_COLORS.disponivel;
   return (
     <span className="status-pill" style={{ color: colors.label, background: colors.glow }}>

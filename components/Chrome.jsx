@@ -1,6 +1,7 @@
 // chrome.jsx - Sidebar + Header
 
 import { useState, useEffect, useRef } from 'react';
+import { userHasModule } from '../lib/modules';
 
 export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresas = [], selectedEmpresa, currentEmpresa, onSelectEmpresa }) => {
   const roleLabels = {
@@ -14,20 +15,18 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
     { id: 'loteamentos', label: 'Loteamentos', icon: 'map', badge: counts.loteamentos },
     { id: 'predios', label: 'Prédios', icon: 'building', badge: counts.predios },
     { id: 'locacoes', label: 'Locações', icon: 'rent', badge: counts.locacoes },
+    { id: 'comercial', label: 'Comercial', icon: 'chart', badge: counts.alertas },
     { id: 'lotes', label: 'Lotes', icon: 'grid', badge: counts.lotes },
     { id: 'vendas', label: 'Vendas', icon: 'bag', badge: counts.vendas },
     { id: 'clientes', label: 'Clientes', icon: 'client', badge: counts.clientes },
-    { id: 'planos', label: 'Planos', icon: 'plans' },
-    ...(user?.role === 'admin' || user?.role === 'gerente'
-      ? [{ id: 'relatorios', label: 'Relatórios', icon: 'chart' }]
-      : []),
+    { id: 'relatorios', label: 'Relatórios', icon: 'chart' },
     ...(user?.role === 'admin'
       ? [{ id: 'admin', label: 'Admin', icon: 'shield' }]
       : []),
     ...(user?.role === 'gerente'
       ? [{ id: 'usuarios', label: 'Usuarios', icon: 'users' }]
       : []),
-  ];
+  ].filter((item) => user?.role !== 'vendedor' || userHasModule(user, item.id));
 
   const iconPaths = {
     home: <path d="M3 7.5L9 3l6 4.5V14a1 1 0 0 1-1 1h-3v-4H7v4H4a1 1 0 0 1-1-1V7.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none" />,
@@ -215,6 +214,7 @@ export const Header = ({ view, loteamentoNome, onBack }) => {
     predios: 'Prédios',
     predio: 'Prédio',
     locacoes: 'Locações',
+    comercial: 'Comercial',
   };
 
   return (

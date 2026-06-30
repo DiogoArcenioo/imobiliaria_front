@@ -260,7 +260,7 @@ export function RelatoriosPanel({ user }) {
     const equipe = data.equipe || [];
 
     const vendasP = vendas.filter((v) => inRange(v.data, range));
-    const novasLocacoes = locacoes.filter((l) => inRange(l.criado_em, range));
+    const novasLocacoes = locacoes.filter((l) => inRange(l.data_inicio, range));
     const encerradasP = locacoes.filter((l) => l.encerrado_em && inRange(l.encerrado_em, range));
     const cancelamentosP = cancelamentos.filter((c) => inRange(c.data, range));
     const ativas = locacoes.filter((l) => l.status === 'ativa');
@@ -376,7 +376,7 @@ export function RelatoriosPanel({ user }) {
       }));
     } else if (dataset === 'locacoes') {
       rows = calc.novasLocacoes.map((l) => ({
-        data: l.criado_em,
+        data: l.data_inicio,
         codigo: `Apto ${l.apartamento_codigo}`,
         empreendimento: l.predio,
         empKey: `predio-${l.predio_id}`,
@@ -529,22 +529,24 @@ export function RelatoriosPanel({ user }) {
           )}
         </div>
 
-        <div className="rel-period" style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', alignSelf: 'center' }}>Vendas:</span>
-          {[
-            { id: '', label: 'Todos' },
-            { id: 'lote', label: 'Lotes' },
-            { id: 'apartamento', label: 'Apartamentos' },
-          ].map((o) => (
-            <button
-              key={o.id}
-              className={'rel-chip' + (filtroOrigem === o.id ? ' rel-chip-active' : '')}
-              onClick={() => setFiltroOrigem(o.id)}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
+        {tab === 'visao' && (
+          <div className="rel-period" style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', alignSelf: 'center' }}>Vendas:</span>
+            {[
+              { id: '', label: 'Todos' },
+              { id: 'lote', label: 'Lotes' },
+              { id: 'apartamento', label: 'Apartamentos' },
+            ].map((o) => (
+              <button
+                key={o.id}
+                className={'rel-chip' + (filtroOrigem === o.id ? ' rel-chip-active' : '')}
+                onClick={() => setFiltroOrigem(o.id)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {tab === 'visao' ? (
@@ -563,6 +565,7 @@ export function RelatoriosPanel({ user }) {
           filtroEmpreendimento={filtroEmpreendimento}
           setFiltroEmpreendimento={setFiltroEmpreendimento}
           filtroOrigem={filtroOrigem}
+          setFiltroOrigem={setFiltroOrigem}
           busca={busca}
           setBusca={setBusca}
           onExport={handleExport}
@@ -833,11 +836,11 @@ function EstoqueLinha({ titulo, total, segmentos, extra }) {
 function Explorar({
   data, explorar, dataset, setDataset, groupBy, setGroupBy,
   filtroVendedor, setFiltroVendedor, filtroEmpreendimento, setFiltroEmpreendimento,
-  filtroOrigem, busca, setBusca, onExport, onExportPdf, periodoLabel,
+  filtroOrigem, setFiltroOrigem, busca, setBusca, onExport, onExportPdf, periodoLabel,
 }) {
+  const [showFiltrosModal, setShowFiltrosModal] = useState(false);
   const equipe = (data.equipe || []).filter((u) => u.role === 'vendedor' || u.role === 'gerente');
 
-  // Opções de empreendimento a partir dos dados carregados
   const empOptions = useMemo(() => {
     const map = new Map();
     for (const v of data.vendas || []) map.set(`${v.empreendimento_tipo}-${v.empreendimento_id}`, v.empreendimento);
@@ -848,76 +851,61 @@ function Explorar({
 
   const valorHeader = dataset === 'locacoes' ? 'Valor mensal' : 'Valor';
 
+  const activeFilters = [
+    dataset !== 'vendas',
+    filtroOrigem !== '',
+    groupBy !== 'vendedor',
+    !!filtroVendedor,
+    !!filtroEmpreendimento,
+    !!busca,
+  ].filter(Boolean).length;
+
+  function clearFilters() {
+    setDataset('vendas');
+    setFiltroOrigem('');
+    setGroupBy('vendedor');
+    setFiltroVendedor('');
+    setFiltroEmpreendimento('');
+    setBusca('');
+  }
+
   return (
     <>
-      <section className="rel-card rel-config">
-        <div className="rel-config-row">
-          <div className="rel-config-field">
-            <span>O que analisar</span>
-            <div className="rel-seg">
-              {DATASETS.map((d) => (
-                <button
-                  key={d.id}
-                  className={'rel-seg-btn' + (dataset === d.id ? ' rel-seg-btn-active' : '')}
-                  onClick={() => setDataset(d.id)}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+        <button
+          onClick={() => setShowFiltrosModal(true)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 7, padding: '7px 14px',
+            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8,
+            fontSize: 13, fontWeight: 500, color: 'var(--text)', cursor: 'pointer',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          Filtros
+          {activeFilters > 0 && (
+            <span style={{
+              background: '#3b82f6', color: '#fff', borderRadius: 99,
+              fontSize: 11, fontWeight: 700, padding: '1px 6px', lineHeight: '1.6',
+            }}>
+              {activeFilters}
+            </span>
+          )}
+        </button>
 
-          <div className="rel-config-field">
-            <span>Agrupar</span>
-            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
-              {AGRUPAMENTOS.map((a) => (
-                <option key={a.id} value={a.id}>{a.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="rel-config-field">
-            <span>Responsável</span>
-            <select value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)}>
-              <option value="">Todos</option>
-              {equipe.map((u) => (
-                <option key={u.id} value={String(u.id)}>{u.nome}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="rel-config-field">
-            <span>Empreendimento</span>
-            <select value={filtroEmpreendimento} onChange={(e) => setFiltroEmpreendimento(e.target.value)}>
-              <option value="">Todos</option>
-              {empOptions.map(([key, nome]) => (
-                <option key={key} value={key}>{nome}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="rel-config-field rel-config-busca">
-            <span>Buscar</span>
-            <input
-              placeholder="Unidade, cliente, vendedor..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button className="qa-btn rel-export" onClick={onExport} disabled={!explorar?.rows.length}
-              style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
-              title="Baixar planilha CSV">
-              Exportar CSV
-            </button>
-            <button className="qa-btn qa-btn-primary rel-export" onClick={onExportPdf} disabled={!explorar?.rows.length}
-              title="Abrir relatório formatado para salvar como PDF">
-              Exportar PDF
-            </button>
-          </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="qa-btn rel-export" onClick={onExport} disabled={!explorar?.rows.length}
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+            title="Baixar planilha CSV">
+            Exportar CSV
+          </button>
+          <button className="qa-btn qa-btn-primary rel-export" onClick={onExportPdf} disabled={!explorar?.rows.length}
+            title="Abrir relatório formatado para salvar como PDF">
+            Exportar PDF
+          </button>
         </div>
-      </section>
+      </div>
 
       {explorar && (
         <>
@@ -986,6 +974,100 @@ function Explorar({
             )}
           </section>
         </>
+      )}
+
+      {showFiltrosModal && (
+        <div className="sale-modal-backdrop" onClick={() => setShowFiltrosModal(false)}>
+          <section className="sale-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <header className="sale-modal-head">
+              <div>
+                <div className="dash-eyebrow">EXPLORAR DADOS</div>
+                <h2>Filtros</h2>
+                <p>Configure o que analisar e como agrupar os dados.</p>
+              </div>
+              <button className="sale-modal-close" onClick={() => setShowFiltrosModal(false)} aria-label="Fechar">
+                <svg width="14" height="14" viewBox="0 0 14 14">
+                  <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                </svg>
+              </button>
+            </header>
+
+            <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div className="rel-config-field">
+                <span>O que analisar</span>
+                <div className="rel-seg">
+                  {DATASETS.map((d) => (
+                    <button key={d.id} className={'rel-seg-btn' + (dataset === d.id ? ' rel-seg-btn-active' : '')} onClick={() => setDataset(d.id)}>
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {dataset === 'vendas' && (
+                <div className="rel-config-field">
+                  <span>Tipo de venda</span>
+                  <div className="rel-seg">
+                    {[{ id: '', label: 'Todos' }, { id: 'lote', label: 'Lotes' }, { id: 'apartamento', label: 'Apartamentos' }].map((o) => (
+                      <button key={o.id} className={'rel-seg-btn' + (filtroOrigem === o.id ? ' rel-seg-btn-active' : '')} onClick={() => setFiltroOrigem(o.id)}>
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="rel-config-field">
+                <span>Agrupar por</span>
+                <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+                  {AGRUPAMENTOS.map((a) => (
+                    <option key={a.id} value={a.id}>{a.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rel-config-field">
+                <span>Responsável</span>
+                <select value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)}>
+                  <option value="">Todos</option>
+                  {equipe.map((u) => (
+                    <option key={u.id} value={String(u.id)}>{u.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rel-config-field">
+                <span>Empreendimento</span>
+                <select value={filtroEmpreendimento} onChange={(e) => setFiltroEmpreendimento(e.target.value)}>
+                  <option value="">Todos</option>
+                  {empOptions.map(([key, nome]) => (
+                    <option key={key} value={key}>{nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rel-config-field rel-config-busca">
+                <span>Buscar</span>
+                <input
+                  placeholder="Unidade, cliente, vendedor..."
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <footer className="sale-modal-actions">
+              {activeFilters > 0 && (
+                <button className="qa-btn" onClick={clearFilters} style={{ color: 'var(--text-muted)' }}>
+                  Limpar filtros
+                </button>
+              )}
+              <button className="qa-btn qa-btn-primary" onClick={() => setShowFiltrosModal(false)}>
+                Aplicar
+              </button>
+            </footer>
+          </section>
+        </div>
       )}
     </>
   );

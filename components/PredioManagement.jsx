@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building3DView } from './Building3DView';
 import { FloorPlanEditor } from './FloorPlanEditor';
 import { ApartmentCard } from './ApartmentCard';
 import { formatCpfCnpj } from './ClienteManagement';
-import { LocacaoDialog, LocacoesPanel } from './LocacoesPanel';
+import { EncerrarLocacaoDialog, LocacaoDialog, LocacoesPanel } from './LocacoesPanel';
 import { createLocacao, encerrarLocacao, getLocacoes, getLocacoesResumo } from '../lib/api';
 
 function clientLabel(c) {
@@ -17,6 +17,7 @@ function ApStatusDialog({ ap, status, clientes, onConfirm, onCancel }) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(null);
   const [obs, setObs] = useState('');
+  const [dataVenda, setDataVenda] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
 
   const STATUS_LABELS = {
@@ -37,7 +38,7 @@ function ApStatusDialog({ ap, status, clientes, onConfirm, onCancel }) {
     if (!selected) return;
     setSaving(true);
     try {
-      await onConfirm({ clienteId: selected.id, observacao: obs });
+      await onConfirm({ clienteId: selected.id, observacao: obs, dataVenda: status === 'vendido' ? dataVenda : undefined });
     } finally {
       setSaving(false);
     }
@@ -73,6 +74,18 @@ function ApStatusDialog({ ap, status, clientes, onConfirm, onCancel }) {
               ))
             )}
           </div>
+          {status === 'vendido' && (
+            <label className="field-label">
+              Data da venda
+              <input
+                type="date"
+                className="field-input"
+                value={dataVenda}
+                onChange={(e) => setDataVenda(e.target.value)}
+                max={new Date().toISOString().slice(0, 10)}
+              />
+            </label>
+          )}
           {status === 'reservado' && (
             <label className="field-label">
               Observação
@@ -140,6 +153,8 @@ export function PredioManagement({
   const [locacoes, setLocacoes] = useState([]);
   const [locacoesResumo, setLocacoesResumo] = useState({});
   const [locacoesLoading, setLocacoesLoading] = useState(false);
+  const [locacoesStatusFilter, setLocacoesStatusFilter] = useState('ativa');
+  const [encerrarLocacaoDialog, setEncerrarLocacaoDialog] = useState(null);
   const [saving, setSaving] = useState(false);
 
   if (!predio) return null;
@@ -150,12 +165,13 @@ export function PredioManagement({
     ? predio.andares?.find((a) => a.numero === selectedFloor)
     : null;
 
-  const loadLocacoes = useCallback(async () => {
+  const loadLocacoes = useCallback(async (status = locacoesStatusFilter) => {
     if (!predio?.id) return;
     setLocacoesLoading(true);
     try {
+      const filters = status === 'todos' ? { predioId: predio.id } : { predioId: predio.id, status };
       const [list, summary] = await Promise.all([
-        getLocacoes({ predioId: predio.id }),
+        getLocacoes(filters),
         getLocacoesResumo(predio.id),
       ]);
       setLocacoes(list);
@@ -163,7 +179,7 @@ export function PredioManagement({
     } finally {
       setLocacoesLoading(false);
     }
-  }, [predio?.id]);
+  }, [predio?.id, locacoesStatusFilter]);
 
   useEffect(() => {
     loadLocacoes().catch(() => {});
@@ -199,9 +215,10 @@ export function PredioManagement({
         item.status === 'ativa' && item.apartamento_id === selectedAp.id
       );
       if (activeRental) {
-        if (!window.confirm(`Encerrar a locação do apartamento ${selectedAp.ap_id}?`)) return;
-        await encerrarLocacao(activeRental.id, 'Encerrada pelo cadastro do apartamento');
-        await loadLocacoes();
+        setEncerrarLocacaoDialog(activeRental);
+        setSelectedAp(null);
+        setApPos(null);
+        return;
       } else {
         await onUpdateApStatus?.(selectedAp.id, nextStatus, null, null);
       }
@@ -215,11 +232,11 @@ export function PredioManagement({
     setApPos(null);
   };
 
-  const handleStatusDialogConfirm = async ({ clienteId, observacao }) => {
+  const handleStatusDialogConfirm = async ({ clienteId, observacao, dataVenda }) => {
     if (!statusDialog) return;
     setSaving(true);
     try {
-      await onUpdateApStatus?.(statusDialog.ap.id, statusDialog.status, clienteId, observacao);
+      await onUpdateApStatus?.(statusDialog.ap.id, statusDialog.status, clienteId, observacao, dataVenda);
       setStatusDialog(null);
       setSelectedAp(null);
       onRefresh?.();
@@ -236,9 +253,14 @@ export function PredioManagement({
   };
 
   const handleEndLocacao = async (locacao) => {
-    if (!window.confirm(`Encerrar a locação do apartamento ${locacao.apartamento_codigo}?`)) return;
+    setEncerrarLocacaoDialog(locacao);
+  };
+
+  const confirmEndLocacao = async (data) => {
+    if (!encerrarLocacaoDialog) return;
     try {
-      await encerrarLocacao(locacao.id, 'Encerrada pelo painel de locações');
+      await encerrarLocacao(encerrarLocacaoDialog.id, data);
+      setEncerrarLocacaoDialog(null);
       await Promise.all([loadLocacoes(), onRefresh?.()]);
     } catch (err) {
       window.alert(err.message || 'Não foi possível encerrar a locação.');
@@ -314,6 +336,12 @@ export function PredioManagement({
           loading={locacoesLoading}
           user={user}
           onEnd={handleEndLocacao}
+          onLocacoesRefresh={loadLocacoes}
+          statusFilter={locacoesStatusFilter}
+          onStatusFilterChange={(status) => {
+            setLocacoesStatusFilter(status);
+            loadLocacoes(status);
+          }}
         />
       ) : !selectedFloor ? (
         /* 3D view */
@@ -395,8 +423,9 @@ export function PredioManagement({
               onClose={() => setSelectedAp(null)}
               onStatusChange={handleStatusChange}
               onUpdatePrice={onUpdateAp ? async (novoPreco) => {
-                await onUpdateAp(selectedAp.id, { preco_venda: novoPreco });
-                setSelectedAp((prev) => prev ? { ...prev, preco_venda: novoPreco } : prev);
+                const updated = await onUpdateAp(selectedAp.id, { preco_venda: novoPreco });
+                setSelectedAp((prev) => prev ? { ...prev, ...(updated || {}), preco_venda: updated?.preco_venda ?? novoPreco } : prev);
+                await onRefresh?.();
               } : undefined}
               defaultPriceMode="m2"
               user={user}
@@ -421,6 +450,13 @@ export function PredioManagement({
           clientes={clientes}
           onConfirm={handleCreateLocacao}
           onCancel={() => setLocacaoDialog(null)}
+        />
+      )}
+      {encerrarLocacaoDialog && (
+        <EncerrarLocacaoDialog
+          locacao={encerrarLocacaoDialog}
+          onConfirm={confirmEndLocacao}
+          onCancel={() => setEncerrarLocacaoDialog(null)}
         />
       )}
     </div>

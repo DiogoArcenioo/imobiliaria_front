@@ -24,6 +24,7 @@ export function SaleDialog({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(initialClient || null);
   const [observacao, setObservacao] = useState("");
+  const [dataVenda, setDataVenda] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const isReserva = actionStatus === "reservado";
   const actionLabel = isReserva ? "reserva" : "venda";
@@ -55,7 +56,7 @@ export function SaleDialog({
     if (!selected) return;
     setSaving(true);
     try {
-      await onConfirm(selected, isReserva ? observacao : undefined);
+      await onConfirm(selected, isReserva ? observacao : undefined, isReserva ? undefined : dataVenda);
     } finally {
       setSaving(false);
     }
@@ -125,6 +126,19 @@ export function SaleDialog({
           <div className="sale-selected-client">
             {isReserva ? "Reserva" : "Venda"} vinculada ao cliente <b>ID {selected.id}</b> - {selected.nome}
           </div>
+        )}
+
+        {!isReserva && (
+          <label className="sale-observacao-label">
+            <span>Data da venda</span>
+            <input
+              type="date"
+              value={dataVenda}
+              onChange={(e) => setDataVenda(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
+              style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', fontSize: 14, background: 'var(--surface)', color: 'var(--text)', width: '100%' }}
+            />
+          </label>
         )}
 
         {isReserva && (

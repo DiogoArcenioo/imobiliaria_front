@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getToken, setToken, removeToken } from '../lib/auth';
+import { removeToken } from '../lib/auth';
 
 const AuthContext = createContext(null);
 
@@ -10,13 +10,8 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const validateToken = useCallback(async () => {
-    const token = getToken();
-    if (!token) { setLoading(false); return; }
-
     try {
-      const res = await fetch('/api-proxy/auth/me', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch('/api-proxy/auth/me');
       if (!res.ok) throw new Error('invalid');
       const u = await res.json();
       setUser(u);
@@ -31,6 +26,7 @@ export function AuthProvider({ children }) {
   useEffect(() => { validateToken(); }, [validateToken]);
 
   async function login(email, password) {
+    setLoading(true);
     const res = await fetch('/api-proxy/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -38,12 +34,23 @@ export function AuthProvider({ children }) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
+      setLoading(false);
       throw new Error(err.message ?? 'Erro ao fazer login');
     }
-    const data = await res.json();
-    setToken(data.access_token);
-    setUser(data.user);
-    return data.user;
+    await res.json();
+
+    const meRes = await fetch('/api-proxy/auth/me');
+    if (!meRes.ok) {
+      removeToken();
+      setUser(null);
+      setLoading(false);
+      throw new Error('Não foi possível validar a sessão.');
+    }
+
+    const fullUser = await meRes.json();
+    setUser(fullUser);
+    setLoading(false);
+    return fullUser;
   }
 
   function logout() {

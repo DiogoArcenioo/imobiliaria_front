@@ -527,7 +527,12 @@ function ClientLinkInfo({ lot, user: currentUser, compact = false, onOpenDrawer 
             </button>
           </div>
           {lot.ultima_etapa ? (
-            <p className="lot-neg-preview-text">{lot.ultima_etapa.descricao}</p>
+            <>
+              {lot.ultima_etapa.valor_novo !== null && lot.ultima_etapa.valor_novo !== undefined && (
+                <div className="lot-neg-preview-value">{fmtBRL(lot.ultima_etapa.valor_novo)}</div>
+              )}
+              <p className="lot-neg-preview-text">{lot.ultima_etapa.descricao}</p>
+            </>
           ) : (
             <p className="lot-neg-preview-empty">Sem etapas. Clique em "Ver histórico" para adicionar.</p>
           )}

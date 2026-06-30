@@ -38,7 +38,7 @@ function getStatus(stats) {
   };
 }
 
-export function Building3DView({ predio, onSelectFloor, selectedFloor = null }) {
+export function Building3DView({ predio, onSelectFloor, selectedFloor = null, showLegend = true }) {
   const [hovered, setHovered] = useState(null);
   const rawId = useId();
   if (!predio) return null;
@@ -461,23 +461,25 @@ export function Building3DView({ predio, onSelectFloor, selectedFloor = null }) 
         </g>
       </svg>
 
-      <div className="b3d-legend">
-        {floors.map((f) => (
-          <button
-            key={f.n}
-            className={`b3d-floor-btn${f.isSelected ? ' selected' : ''}`}
-            style={{ '--b3d-clr': f.status.color }}
-            onClick={() => onSelectFloor?.(f.n)}
-            onMouseEnter={() => setHovered(f.n)}
-            onMouseLeave={() => setHovered(null)}
-            type="button"
-          >
-            <span className="b3d-dot" style={{ background: f.status.color }} />
-            <span className="b3d-floor-label">{f.n}&ordm; andar</span>
-            <span className={`b3d-badge b3d-badge-${f.status.type}`}>{f.status.text}</span>
-          </button>
-        ))}
-      </div>
+      {showLegend && (
+        <div className="b3d-legend">
+          {floors.map((f) => (
+            <button
+              key={f.n}
+              className={`b3d-floor-btn${f.isSelected ? ' selected' : ''}`}
+              style={{ '--b3d-clr': f.status.color }}
+              onClick={() => onSelectFloor?.(f.n)}
+              onMouseEnter={() => setHovered(f.n)}
+              onMouseLeave={() => setHovered(null)}
+              type="button"
+            >
+              <span className="b3d-dot" style={{ background: f.status.color }} />
+              <span className="b3d-floor-label">{f.n}&ordm; andar</span>
+              <span className={`b3d-badge b3d-badge-${f.status.type}`}>{f.status.text}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

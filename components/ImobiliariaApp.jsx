@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,8 +14,10 @@ import { AdminPanel } from "./AdminPanel";
 import { UserManagement } from "./UserManagement";
 import { PredioManagement } from "./PredioManagement";
 import { PredioWizard } from "./PredioWizard";
+import { Building3DView } from "./Building3DView";
 import { LocacoesPanel } from "./LocacoesPanel";
 import { RelatoriosPanel } from "./RelatoriosPanel";
+import { ComercialPanel } from "./ComercialPanel";
 import { PlanosPagina } from "./PlanosPagina";
 import {
   TweakColor,
@@ -62,6 +64,7 @@ import {
   encerrarLocacao,
 } from "../lib/api";
 import { fmtBRL, fmtBRLShort, statusLabel } from "../lib/data";
+import { APP_MODULES, userHasModule } from "../lib/modules";
 import { useAuth } from "../context/AuthContext";
 
 const TWEAK_DEFAULTS = {
@@ -75,6 +78,32 @@ const TWEAK_DEFAULTS = {
 const canCreateLoteamentoByRole = (role) => role === "admin";
 const canEditLoteamentoByRole = (role) => role === "admin";
 const canSellByRole = (role) => ["admin", "gerente", "vendedor"].includes(role);
+
+const VIEW_MODULE = {
+  dashboard: "dashboard",
+  loteamentos: "loteamentos",
+  map: "loteamentos",
+  editor: "loteamentos",
+  predios: "predios",
+  predio: "predios",
+  locacoes: "locacoes",
+  comercial: "comercial",
+  lotes: "lotes",
+  vendas: "vendas",
+  clientes: "clientes",
+  relatorios: "relatorios",
+};
+
+function firstAllowedView(user) {
+  if (!user || user.role !== "vendedor") return "dashboard";
+  return APP_MODULES.find((module) => userHasModule(user, module.id))?.id || "dashboard";
+}
+
+function userHasAnyModule(user, moduleIds) {
+  if (!user) return false;
+  if (user.role === "admin" || user.role === "gerente") return true;
+  return moduleIds.some((moduleId) => userHasModule(user, moduleId));
+}
 
 export default function ImobiliariaApp() {
   const { user, logout } = useAuth();
@@ -113,6 +142,7 @@ export default function ImobiliariaApp() {
   const [locacoes, setLocacoes] = useState([]);
   const [locacoesResumo, setLocacoesResumo] = useState({});
   const [locacoesLoading, setLocacoesLoading] = useState(false);
+  const [locacoesStatusFilter, setLocacoesStatusFilter] = useState('ativa');
 
   // Estados para seleção de empresa pelo admin
   const [empresas, setEmpresas] = useState([]);
@@ -147,8 +177,13 @@ export default function ImobiliariaApp() {
   }, []);
 
   useEffect(() => {
-    if (user?.role !== 'admin') fetchLoteamentos();
-  }, [fetchLoteamentos, user?.role]);
+    if (
+      user?.role !== 'admin' &&
+      userHasAnyModule(user, ["dashboard", "loteamentos", "lotes", "vendas", "comercial"])
+    ) {
+      fetchLoteamentos();
+    }
+  }, [fetchLoteamentos, user]);
 
   useEffect(() => {
     if (!user || (user.role === 'admin' && !selectedEmpresa)) {
@@ -273,10 +308,11 @@ export default function ImobiliariaApp() {
     }
   }, []);
 
-  const fetchLocacoes = useCallback(async () => {
+  const fetchLocacoes = useCallback(async (status = locacoesStatusFilter) => {
     setLocacoesLoading(true);
     try {
-      const [list, summary] = await Promise.all([getLocacoes(), getLocacoesResumo()]);
+      const filters = status === 'todos' ? {} : { status };
+      const [list, summary] = await Promise.all([getLocacoes(filters), getLocacoesResumo()]);
       setLocacoes(list);
       setLocacoesResumo(summary);
       return list;
@@ -286,7 +322,7 @@ export default function ImobiliariaApp() {
     } finally {
       setLocacoesLoading(false);
     }
-  }, []);
+  }, [locacoesStatusFilter]);
 
   // Admins só carregam esses dados depois de selecionar uma empresa.
   // Sem empresa, o backend retorna 403 (withTenantContext exige empresa_id).
@@ -367,12 +403,16 @@ export default function ImobiliariaApp() {
   }, []);
 
   useEffect(() => {
-    if (user?.role !== 'admin' || selectedEmpresa) fetchPredios();
-  }, [fetchPredios, user?.role, selectedEmpresa]);
+    if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["dashboard", "predios", "vendas"])) fetchPredios();
+  }, [fetchPredios, user, selectedEmpresa]);
 
   useEffect(() => {
-    if (user?.role !== 'admin' || selectedEmpresa) fetchLocacoes();
-  }, [fetchLocacoes, user?.role, selectedEmpresa]);
+    if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["dashboard", "locacoes", "comercial"])) fetchLocacoes();
+  }, [fetchLocacoes, user, selectedEmpresa]);
+
+  useEffect(() => {
+    if (view === "clientes" && userHasModule(user, "clientes")) fetchClientes("");
+  }, [view, user, fetchClientes]);
 
   const refreshPredio = useCallback(async (id) => {
     try {
@@ -415,19 +455,18 @@ export default function ImobiliariaApp() {
     }
   };
 
-  const onUpdateApStatus = async (apId, status, clienteId, observacao) => {
+  const onUpdateApStatus = async (apId, status, clienteId, observacao, dataVenda) => {
     try {
-      await updateApartamentoStatus(apId, status, clienteId, observacao);
+      await updateApartamentoStatus(apId, status, clienteId, observacao, dataVenda);
       if (activePredioId) await refreshPredio(activePredioId);
     } catch (err) {
       showToast("Erro: " + err.message, "error");
     }
   };
 
-  const onEndLocacao = async (locacao) => {
-    if (!window.confirm(`Encerrar a locação do apartamento ${locacao.apartamento_codigo}?`)) return;
+  const onEndLocacao = async (locacao, encerramentoData) => {
     try {
-      await encerrarLocacao(locacao.id, "Encerrada pelo painel geral de locações");
+      await encerrarLocacao(locacao.id, encerramentoData || { motivo: "Encerrada pelo painel geral de locações" });
       await Promise.all([fetchLocacoes(), fetchPredios()]);
       showToast("Locação encerrada com sucesso");
     } catch (err) {
@@ -558,10 +597,16 @@ export default function ImobiliariaApp() {
     if (view === "admin" && user?.role !== "admin") setView("dashboard");
     if (view === "usuarios" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
     if (view === "settings" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
-    if (view === "relatorios" && user?.role !== "gerente" && user?.role !== "admin") setView("dashboard");
+    if (view === "relatorios" && user?.role !== "gerente" && user?.role !== "admin" && !userHasModule(user, "relatorios")) setView("dashboard");
+    const requiredModule = VIEW_MODULE[view];
+    if (user?.role === "vendedor" && requiredModule && !userHasModule(user, requiredModule)) {
+      setView(firstAllowedView(user));
+      setSelectedLot(null);
+      setActivePredioId(null);
+    }
     // Pré-carrega clientes ao abrir gerenciamento de prédios
     if (view === "predio" && clientes.length === 0) fetchClientes('');
-  }, [view, user?.role]);
+  }, [view, user]);
 
   const onOpenLoteamento = (id) => {
     setActiveLoteamentoId(id);
@@ -644,6 +689,12 @@ export default function ImobiliariaApp() {
       return;
     }
 
+    const requiredModule = VIEW_MODULE[id];
+    if (user?.role === "vendedor" && requiredModule && !userHasModule(user, requiredModule)) {
+      showToast("Seu acesso nao possui esse modulo liberado.", "error");
+      return;
+    }
+
     if (user?.role === "admin" && !selectedEmpresa && id !== "dashboard") {
       showToast("Selecione uma empresa antes de navegar", "error");
       return;
@@ -672,11 +723,11 @@ export default function ImobiliariaApp() {
     fetchClientes("");
   };
 
-  const confirmLotStatus = async (cliente, observacao) => {
+  const confirmLotStatus = async (cliente, observacao, dataVenda) => {
     if (!saleDraft?.lot?.db_id || !cliente?.id) return;
     try {
       const { lot, loteamentoId, targetStatus = "vendido" } = saleDraft;
-      const patchedLot = await updateLoteStatus(lot.db_id, targetStatus, cliente.id, observacao);
+      const patchedLot = await updateLoteStatus(lot.db_id, targetStatus, cliente.id, observacao, dataVenda);
       // Apply the PATCH response immediately to avoid waiting for the full refresh
       if (patchedLot) {
         setLoteamentos((prev) =>
@@ -706,22 +757,45 @@ export default function ImobiliariaApp() {
   };
 
   const onUltimaEtapaChange = useCallback((loteDbId, loteamentoId, ultimaEtapa) => {
+    const valorNovo = ultimaEtapa?.valor_novo;
+    const shouldUpdatePreco = valorNovo !== null && valorNovo !== undefined;
     setLoteamentos((prev) =>
       prev.map((l) => {
         if (l.id !== loteamentoId) return l;
         return {
           ...l,
           lots: (l.lots || []).map((lot) =>
-            lot.db_id === loteDbId ? { ...lot, ultima_etapa: ultimaEtapa } : lot
+            lot.db_id === loteDbId
+              ? {
+                ...lot,
+                ultima_etapa: ultimaEtapa,
+                ...(shouldUpdatePreco ? { preco: Number(valorNovo) } : {}),
+              }
+              : lot
           ),
         };
       })
     );
     setSelectedLot((prev) =>
-      prev?.lot?.db_id === loteDbId ? { ...prev, lot: { ...prev.lot, ultima_etapa: ultimaEtapa } } : prev
+      prev?.lot?.db_id === loteDbId
+        ? {
+          ...prev,
+          lot: {
+            ...prev.lot,
+            ultima_etapa: ultimaEtapa,
+            ...(shouldUpdatePreco ? { preco: Number(valorNovo) } : {}),
+          },
+        }
+        : prev
     );
     setDrawerLot((prev) =>
-      prev?.db_id === loteDbId ? { ...prev, ultima_etapa: ultimaEtapa } : prev
+      prev?.db_id === loteDbId
+        ? {
+          ...prev,
+          ultima_etapa: ultimaEtapa,
+          ...(shouldUpdatePreco ? { preco: Number(valorNovo) } : {}),
+        }
+        : prev
     );
   }, []);
 
@@ -852,6 +926,7 @@ export default function ImobiliariaApp() {
               onOpenEditor={onOpenEditor}
               onRefresh={fetchLoteamentos}
               onOpenPredios={() => setView("predios")}
+              onOpenLoteamentos={() => setView("loteamentos")}
               canCreateLoteamento={canCreateLoteamento}
               canEditLoteamento={canEditLoteamento}
               user={user}
@@ -916,14 +991,22 @@ export default function ImobiliariaApp() {
             />
           )}
 
-          {view === "relatorios" && (user?.role === "gerente" || user?.role === "admin") && (
+          {view === "relatorios" && (user?.role === "gerente" || user?.role === "admin" || userHasModule(user, "relatorios")) && (
             <RelatoriosPanel user={user} />
+          )}
+
+          {view === "comercial" && (
+            <ComercialPanel user={user} />
           )}
 
           {view === "settings" && (user?.role === "gerente" || user?.role === "admin") && (
             <SettingsView
               empresa={settingsEmpresa}
               onSave={onSaveSettings}
+              onAssinarPlano={async () => {
+                const updated = await getCurrentEmpresa();
+                setCurrentEmpresa(updated);
+              }}
             />
           )}
 
@@ -1068,6 +1151,12 @@ export default function ImobiliariaApp() {
                 loading={locacoesLoading}
                 user={user}
                 onEnd={onEndLocacao}
+                onLocacoesRefresh={fetchLocacoes}
+                statusFilter={locacoesStatusFilter}
+                onStatusFilterChange={(status) => {
+                  setLocacoesStatusFilter(status);
+                  fetchLocacoes(status);
+                }}
               />
             </div>
           )}
@@ -1104,6 +1193,7 @@ export default function ImobiliariaApp() {
             view !== "predios" &&
             view !== "predio" &&
             view !== "locacoes" &&
+            view !== "comercial" &&
             view !== "relatorios" &&
             view !== "usuarios" &&
             view !== "planos" && <EmptyState view={view} />}
@@ -1242,7 +1332,8 @@ export default function ImobiliariaApp() {
   );
 }
 
-function SettingsView({ empresa, onSave }) {
+function SettingsView({ empresa, onSave, onAssinarPlano }) {
+  const [activeTab, setActiveTab] = useState("valores");
   const [valorM2, setValorM2] = useState(() => String(Number(empresa?.valor_m2_padrao) || 700));
   const [apValorM2, setApValorM2] = useState(() => String(Number(empresa?.ap_valor_m2_padrao) || 700));
   const [saving, setSaving] = useState(false);
@@ -1276,47 +1367,86 @@ function SettingsView({ empresa, onSave }) {
 
   return (
     <div className="settings-page">
-      <form className="user-form-panel settings-panel" onSubmit={handleSubmit}>
-        <div className="user-form-head">
-          <div>
-            <h2>Configurações do sistema</h2>
-            <p>{empresa?.nome || "Empresa atual"}</p>
-          </div>
+      <header className="settings-head">
+        <div>
+          <div className="dash-eyebrow">CONFIGURAÇÕES</div>
+          <h1 className="list-page-title">Configurações do sistema</h1>
+          <p className="dash-sub">{empresa?.nome || "Empresa atual"}</p>
         </div>
+      </header>
 
-        <div className="user-form-grid">
-          <label className="user-field">
-            <span>Valor padrão por m² (lotes)</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={valorM2}
-              onChange={(event) => setValorM2(event.target.value)}
-            />
-          </label>
-          <label className="user-field">
-            <span>Valor padrão por m² (apartamentos)</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={apValorM2}
-              onChange={(event) => setApValorM2(event.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="settings-note">
-          Esses valores serão usados como preço padrão ao criar novos lotes e apartamentos no editor.
-        </div>
-
-        {error && <div className="form-alert">{error}</div>}
-
-        <button className="btn btn-primary user-submit settings-submit" type="submit" disabled={saving}>
-          {saving ? "Salvando..." : "Salvar configurações"}
+      <div className="settings-tabs" role="tablist" aria-label="Seções de configuração">
+        <button
+          type="button"
+          className={activeTab === "valores" ? "active" : ""}
+          onClick={() => setActiveTab("valores")}
+        >
+          Configuração de valor
         </button>
-      </form>
+        <button
+          type="button"
+          className={activeTab === "assinatura" ? "active" : ""}
+          onClick={() => setActiveTab("assinatura")}
+        >
+          Assinatura
+        </button>
+      </div>
+
+      {activeTab === "valores" && (
+        <form className="settings-card settings-panel" onSubmit={handleSubmit}>
+          <div className="settings-card-head">
+            <div>
+              <h2>Valores padrão</h2>
+              <p>Defina os preços-base usados ao criar novas unidades.</p>
+            </div>
+          </div>
+
+          <div className="user-form-grid">
+            <label className="user-field">
+              <span>Valor padrão por m² (lotes)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={valorM2}
+                onChange={(event) => setValorM2(event.target.value)}
+              />
+            </label>
+            <label className="user-field">
+              <span>Valor padrão por m² (apartamentos)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={apValorM2}
+                onChange={(event) => setApValorM2(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="settings-card-footer">
+            <div>
+              <div className="settings-note">
+                Esses valores serão usados como referência inicial no editor. O valor final ainda pode ser ajustado em cada lote, apartamento ou negociação.
+              </div>
+              {error && <div className="form-alert">{error}</div>}
+            </div>
+
+            <button className="qa-btn qa-btn-primary settings-submit" type="submit" disabled={saving}>
+              {saving ? "Salvando..." : "Salvar configurações"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {activeTab === "assinatura" && (
+        <div className="settings-card settings-planos">
+          <PlanosPagina
+            currentEmpresa={empresa}
+            onAssinar={onAssinarPlano}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1463,6 +1593,11 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
   const total = totalLotes + totalAps;
   const totalCount = soldLots.length + soldAps.length;
 
+  const allSales = [
+    ...soldLots.map((lot) => ({ ...lot, _type: 'lote' })),
+    ...soldAps.map((ap) => ({ ...ap, _type: 'apartamento' })),
+  ].sort((a, b) => new Date(b.vendido_em || b.atualizado_em || 0) - new Date(a.vendido_em || a.atualizado_em || 0));
+
   return (
     <section className="list-page">
       <header className="list-page-head">
@@ -1472,7 +1607,7 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
           <p className="dash-sub">
             {totalCount} {totalCount === 1 ? "venda" : "vendas"}{isVendedor ? " realizadas por você" : " registradas"}
             {soldLots.length > 0 && soldAps.length > 0 && ` (${soldLots.length} lotes · ${soldAps.length} aptos)`}
-            {" · "}{fmtBRLShort(total)} em VGV realizado.
+            {" · "}{fmtBRLShort(total)} em total vendido.
           </p>
         </div>
       </header>
@@ -1491,61 +1626,65 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
                 <th>Empreendimento</th>
                 <th>Área</th>
                 <th>Valor</th>
+                <th>Data da venda</th>
                 <th>Cliente</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {soldLots.map((lot) => (
-                <tr key={`lote-${lot.db_id || lot.id}`}>
-                  <td><span className="status-pill" style={{ color: '#3288e0', background: 'rgba(50,136,224,.12)' }}>Lote</span></td>
-                  <td><b className="lot-code">{lot.id}</b>{lot.quadra && <div className="table-sub">Quadra {lot.quadra}</div>}</td>
-                  <td>
-                    <button className="link-button" onClick={() => onOpenLoteamento?.(lot.loteamentoId)}>
-                      {lot.loteamentoNome}
-                    </button>
-                    <div className="table-sub">{[lot.cidade, lot.estado].filter(Boolean).join('/') || '—'}</div>
-                  </td>
-                  <td>{lot.area ? `${lot.area} m²` : '—'}</td>
-                  <td>{fmtBRL(lot.preco)}</td>
-                  <td>
-                    {lot.cliente ? (
-                      <>
-                        <b>{lot.cliente.nome}</b>
-                        <div className="table-sub">{formatCpfCnpj(lot.cliente.cpf_cnpj)}</div>
-                      </>
-                    ) : '—'}
-                  </td>
-                  <td>
-                    <button className="table-action table-action-ghost" onClick={() => onOpenLoteamento?.(lot.loteamentoId)}>Mapa</button>
-                  </td>
-                </tr>
-              ))}
-              {soldAps.map((ap) => (
-                <tr key={`ap-${ap.id}`}>
-                  <td><span className="status-pill" style={{ color: '#8b5cf6', background: 'rgba(139,92,246,.12)' }}>Apartamento</span></td>
-                  <td><b className="lot-code">{ap.ap_id}</b></td>
-                  <td>
-                    <button className="link-button" onClick={() => onOpenPredios?.()}>
-                      {ap.predioNome}
-                    </button>
-                    <div className="table-sub">{[ap.cidade, ap.estado].filter(Boolean).join('/') || '—'}</div>
-                  </td>
-                  <td>{ap.area > 0 ? `${ap.area} m²` : '—'}</td>
-                  <td>{fmtBRL(ap.preco_venda)}</td>
-                  <td>
-                    {ap.cliente ? (
-                      <>
-                        <b>{ap.cliente.nome}</b>
-                        <div className="table-sub">{formatCpfCnpj(ap.cliente.cpf_cnpj)}</div>
-                      </>
-                    ) : '—'}
-                  </td>
-                  <td>
-                    <button className="table-action table-action-ghost" onClick={() => onOpenPredios?.()}>Prédio</button>
-                  </td>
-                </tr>
-              ))}
+              {allSales.map((item) =>
+                item._type === 'lote' ? (
+                  <tr key={`lote-${item.db_id || item.id}`}>
+                    <td><span className="status-pill" style={{ color: '#3288e0', background: 'rgba(50,136,224,.12)' }}>Lote</span></td>
+                    <td><b className="lot-code">{item.id}</b>{item.quadra && <div className="table-sub">Quadra {item.quadra}</div>}</td>
+                    <td>
+                      <button className="link-button" onClick={() => onOpenLoteamento?.(item.loteamentoId)}>
+                        {item.loteamentoNome}
+                      </button>
+                      <div className="table-sub">{[item.cidade, item.estado].filter(Boolean).join('/') || '—'}</div>
+                    </td>
+                    <td>{item.area ? `${item.area} m²` : '—'}</td>
+                    <td>{fmtBRL(item.preco)}</td>
+                    <td>{item.vendido_em ? new Date(item.vendido_em).toLocaleDateString('pt-BR') : <span style={{ color: '#aaa' }}>—</span>}</td>
+                    <td>
+                      {item.cliente ? (
+                        <>
+                          <b>{item.cliente.nome}</b>
+                          <div className="table-sub">{formatCpfCnpj(item.cliente.cpf_cnpj)}</div>
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td>
+                      <button className="table-action table-action-ghost" onClick={() => onOpenLoteamento?.(item.loteamentoId)}>Loteamento</button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={`ap-${item.id}`}>
+                    <td><span className="status-pill" style={{ color: '#8b5cf6', background: 'rgba(139,92,246,.12)' }}>Apartamento</span></td>
+                    <td><b className="lot-code">{item.ap_id}</b></td>
+                    <td>
+                      <button className="link-button" onClick={() => onOpenPredios?.()}>
+                        {item.predioNome}
+                      </button>
+                      <div className="table-sub">{[item.cidade, item.estado].filter(Boolean).join('/') || '—'}</div>
+                    </td>
+                    <td>{item.area > 0 ? `${item.area} m²` : '—'}</td>
+                    <td>{fmtBRL(item.preco_venda)}</td>
+                    <td>{item.vendido_em ? new Date(item.vendido_em).toLocaleDateString('pt-BR') : <span style={{ color: '#aaa' }}>—</span>}</td>
+                    <td>
+                      {item.cliente ? (
+                        <>
+                          <b>{item.cliente.nome}</b>
+                          <div className="table-sub">{formatCpfCnpj(item.cliente.cpf_cnpj)}</div>
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td>
+                      <button className="table-action table-action-ghost" onClick={() => onOpenPredios?.()}>Prédio</button>
+                    </td>
+                  </tr>
+                )
+              )}
             </tbody>
           </table>
         </div>
@@ -1594,7 +1733,7 @@ function LotTable({ lots, onOpenLoteamento, onStatusAction, salesOnly = false })
               )}
               <td>
                 <div className="table-actions">
-                  <button className="table-action table-action-ghost" onClick={() => onOpenLoteamento?.(lot.loteamentoId)}>Mapa</button>
+                  <button className="table-action table-action-ghost" onClick={() => onOpenLoteamento?.(lot.loteamentoId)}>Loteamento</button>
                   {!salesOnly && (
                     <>
                       {lot.status === "disponivel" && (
@@ -1740,60 +1879,114 @@ function PrediosListView({ predios, loading, canCreate, canEdit, onOpenPredio, o
           )}
         </div>
       ) : (
-        <div className="predios-grid">
+        <div className="predios-list">
           {filtered.map((p) => {
             const stats = p.stats || {};
             const total = stats.total || 0;
+            const disponiveis = stats.disponivel || 0;
+            const reservados = stats.reservado || 0;
+            const vendidos = stats.vendido || 0;
+            const alugados = stats.alugado || 0;
+            const ocupados = total - disponiveis;
             const ocupPct = total > 0 ? Math.round(((total - (stats.disponivel || 0)) / total) * 100) : 0;
+            const soldPct = total > 0 ? (vendidos / total) * 100 : 0;
+            const rentedPct = total > 0 ? (alugados / total) * 100 : 0;
+            const reservedPct = total > 0 ? (reservados / total) * 100 : 0;
+            const availablePct = Math.max(0, 100 - soldPct - rentedPct - reservedPct);
             return (
-              <div key={p.id} className="lot-card-item" style={{ cursor: 'pointer', opacity: p.ativo === false ? 0.65 : 1 }} onClick={() => onOpenPredio(p.id)}>
-                <div className="lci-header">
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div className="lci-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {p.nome}
-                      {p.ativo === false && (
-                        <span style={{
-                          fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.05em',
-                          padding: '1px 6px', borderRadius: 20, flexShrink: 0,
-                          background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5',
-                        }}>INATIVO</span>
-                      )}
+              <article
+                key={p.id}
+                className="predio-card-row"
+                style={{ cursor: 'pointer', opacity: p.ativo === false ? 0.65 : 1 }}
+                onClick={() => onOpenPredio(p.id)}
+              >
+                <div className="predio-card-visual" aria-hidden="true">
+                  <Building3DView predio={p} showLegend={false} />
+                </div>
+
+                <div className="predio-card-body">
+                  <div className="predio-card-head">
+                    <div>
+                      <div className="lcr-eyebrow">Prédio</div>
+                      <div className="predio-card-title">
+                        {p.nome}
+                        {p.ativo === false && <span className="predio-inactive-badge">INATIVO</span>}
+                      </div>
+                      <div className="lcr-loc">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                          <path d="M8 14s4.5-4.3 4.5-7.4A4.5 4.5 0 0 0 3.5 6.6C3.5 9.7 8 14 8 14z" stroke="currentColor" strokeWidth="1.4" />
+                          <circle cx="8" cy="6.6" r="1.5" stroke="currentColor" strokeWidth="1.4" />
+                        </svg>
+                        {[p.bairro, p.cidade, p.estado].filter(Boolean).join(' · ') || 'Local não informado'}
+                      </div>
                     </div>
-                    {(p.cidade || p.bairro) && (
-                      <div className="lci-sub">{[p.bairro, p.cidade, p.estado].filter(Boolean).join(' · ')}</div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                    {canEdit && onToggleAtivo && (
+
+                    <div className="predio-card-actions">
+                      {canEdit && onToggleAtivo && (
+                        <button
+                          className={p.ativo === false ? 'predio-toggle predio-toggle-restore' : 'predio-toggle'}
+                          onClick={(e) => handleToggle(e, p)}
+                          disabled={toggling === p.id}
+                          title={p.ativo === false ? 'Reativar prédio' : 'Arquivar prédio'}
+                        >
+                          {toggling === p.id ? '...' : p.ativo === false ? 'Reativar' : 'Arquivar'}
+                        </button>
+                      )}
                       <button
-                        onClick={(e) => handleToggle(e, p)}
-                        disabled={toggling === p.id}
-                        title={p.ativo === false ? 'Reativar prédio' : 'Arquivar prédio'}
-                        style={{
-                          padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 600,
-                          border: p.ativo === false ? '1px solid #86efac' : '1px solid #fca5a5',
-                          background: 'transparent', cursor: 'pointer',
-                          color: p.ativo === false ? '#15803d' : '#dc2626',
+                        className="lcr-open"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenPredio(p.id);
                         }}
                       >
-                        {toggling === p.id ? '...' : p.ativo === false ? 'Reativar' : 'Arquivar'}
+                        Abrir prédio
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                          <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
                       </button>
-                    )}
-                    <div className="lci-floors">{p.num_andares} andares</div>
+                    </div>
+                  </div>
+
+                  <div className="lcr-stats">
+                    <div className="lcr-stat">
+                      <span className="lcr-stat-k">Andares</span>
+                      <span className="lcr-stat-v">{p.num_andares || 0}</span>
+                    </div>
+                    <div className="lcr-stat">
+                      <span className="lcr-stat-k">Apartamentos</span>
+                      <span className="lcr-stat-v">{total}</span>
+                    </div>
+                    <div className="lcr-stat">
+                      <span className="lcr-stat-k">Disponíveis</span>
+                      <span className="lcr-stat-v">{disponiveis}</span>
+                    </div>
+                    <div className="lcr-stat">
+                      <span className="lcr-stat-k">Ocupados</span>
+                      <span className="lcr-stat-v">{ocupados}</span>
+                    </div>
+                  </div>
+
+                  <div className="lcr-progress">
+                    <div className="lcr-prog-head">
+                      <span>Ocupação</span>
+                      <b>{ocupPct}%</b>
+                    </div>
+                    <div className="lcr-prog-bar">
+                      <div className="lcr-prog-vendido" style={{ width: `${soldPct}%` }} />
+                      <div className="lcr-prog-alugado" style={{ width: `${rentedPct}%` }} />
+                      <div className="lcr-prog-reservado" style={{ width: `${reservedPct}%` }} />
+                      <div className="lcr-prog-disponivel" style={{ width: `${availablePct}%` }} />
+                    </div>
+                    <div className="lcr-prog-legend">
+                      <span><i style={{ background: AP_STATUS_COLORS.vendido }} />{vendidos} vendidos</span>
+                      <span><i style={{ background: AP_STATUS_COLORS.alugado }} />{alugados} alugados</span>
+                      <span><i style={{ background: AP_STATUS_COLORS.reservado }} />{reservados} reservados</span>
+                      <span><i style={{ background: AP_STATUS_COLORS.disponivel }} />{disponiveis} disponíveis</span>
+                    </div>
                   </div>
                 </div>
-                <div className="lci-stats">
-                  {Object.entries(AP_STATUS_COLORS).map(([s, c]) => (
-                    <span key={s} style={{ color: c, fontSize: 12, fontWeight: 600 }}>
-                      {stats[s] ?? 0} {s}
-                    </span>
-                  ))}
-                </div>
-                <div className="lci-bar">
-                  <div className="lci-bar-fill" style={{ width: `${ocupPct}%`, background: p.cor || '#3288e0' }} />
-                </div>
-                <div className="lci-bar-label">{ocupPct}% ocupado · {total} aptos total</div>
-              </div>
+              </article>
             );
           })}
         </div>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toggleUserAtivo } from "../lib/api";
+import { APP_MODULES, DEFAULT_VENDEDOR_MODULES, normalizeModules } from "../lib/modules";
 
 const ROLE_LABELS = {
   admin: "Administrador",
@@ -15,6 +16,7 @@ const initialForm = {
   email: "",
   telefone: "",
   role: "vendedor",
+  modulos_permitidos: DEFAULT_VENDEDOR_MODULES,
   senha: "",
   confirmar: "",
 };
@@ -66,8 +68,10 @@ export function UserManagement({
   const [apiError, setApiError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [formStep, setFormStep] = useState("info");
   const [togglingId, setTogglingId] = useState(null);
   const [filtroAtivo, setFiltroAtivo] = useState('ativo');
+  const [roleFilter, setRoleFilter] = useState('todos');
 
   const visibleUsers = useMemo(() => users.filter((u) => u.role !== "admin"), [users]);
   const activeUsers  = useMemo(() => visibleUsers.filter((u) => u.ativo !== false), [visibleUsers]);
@@ -77,13 +81,17 @@ export function UserManagement({
     let list = visibleUsers;
     if (filtroAtivo === 'ativo') list = list.filter((u) => u.ativo !== false);
     else if (filtroAtivo === 'inativo') list = list.filter((u) => u.ativo === false);
+    if (roleFilter !== 'todos') list = list.filter((u) => u.role === roleFilter);
     if (!q) return list;
-    return list.filter((user) =>
-      [user.nome, user.login, user.email, user.telefone, ROLE_LABELS[user.role]]
+    return list.filter((user) => {
+      const moduleLabels = normalizeModules(user.modulos_permitidos, DEFAULT_VENDEDOR_MODULES)
+        .map((id) => APP_MODULES.find((module) => module.id === id)?.label)
+        .filter(Boolean);
+      return [user.nome, user.login, user.email, user.telefone, ROLE_LABELS[user.role], ...moduleLabels]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q))
-    );
-  }, [query, visibleUsers, filtroAtivo]);
+        .some((value) => String(value).toLowerCase().includes(q));
+    });
+  }, [query, visibleUsers, filtroAtivo, roleFilter]);
 
   const counts = useMemo(() => {
     return visibleUsers.reduce(
@@ -102,19 +110,38 @@ export function UserManagement({
     && activeUsers.length >= planoInfo.max_usuarios;
 
   function setField(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [key]: value,
+      ...(key === "role" && value === "vendedor" && normalizeModules(prev.modulos_permitidos).length === 0
+        ? { modulos_permitidos: DEFAULT_VENDEDOR_MODULES }
+        : {}),
+    }));
     setErrors((prev) => ({ ...prev, [key]: "" }));
+    setApiError("");
+  }
+
+  function toggleModulo(moduleId) {
+    setForm((prev) => {
+      const current = normalizeModules(prev.modulos_permitidos);
+      const next = current.includes(moduleId)
+        ? (current.length > 1 ? current.filter((id) => id !== moduleId) : current)
+        : [...current, moduleId];
+      return { ...prev, modulos_permitidos: next };
+    });
     setApiError("");
   }
 
   function startEdit(user) {
     setEditingUser(user);
+    setFormStep("info");
     setForm({
       nome: user.nome || "",
       login: user.login || "",
       email: user.email || "",
       telefone: user.telefone ? maskPhone(user.telefone) : "",
       role: user.role || "vendedor",
+      modulos_permitidos: normalizeModules(user.modulos_permitidos, DEFAULT_VENDEDOR_MODULES),
       senha: "",
       confirmar: "",
     });
@@ -125,6 +152,7 @@ export function UserManagement({
   function cancelEdit() {
     setEditingUser(null);
     setForm(initialForm);
+    setFormStep("info");
     setErrors({});
     setApiError("");
   }
@@ -180,11 +208,13 @@ export function UserManagement({
           email: form.email.trim().toLowerCase(),
           telefone: form.telefone.replace(/\D/g, "") || undefined,
           role: form.role,
+          modulos_permitidos: form.role === "vendedor" ? normalizeModules(form.modulos_permitidos) : [],
         };
         if (form.senha) data.senha = form.senha;
         await onUpdate(editingUser.id, data);
         setEditingUser(null);
         setForm(initialForm);
+        setFormStep("info");
         setErrors({});
       } else {
         await onCreate({
@@ -193,9 +223,11 @@ export function UserManagement({
           email: form.email.trim().toLowerCase(),
           telefone: form.telefone.replace(/\D/g, "") || undefined,
           role: form.role,
+          modulos_permitidos: form.role === "vendedor" ? normalizeModules(form.modulos_permitidos) : [],
           senha: form.senha,
         });
         setForm(initialForm);
+        setFormStep("info");
         setErrors({});
       }
     } catch (err) {
@@ -203,6 +235,11 @@ export function UserManagement({
     } finally {
       setSaving(false);
     }
+  }
+
+  function goToAccessStep() {
+    if (!validate()) return;
+    setFormStep("access");
   }
 
   async function handleToggleAtivo(user) {
@@ -284,118 +321,64 @@ export function UserManagement({
         <form className="user-form-panel" onSubmit={handleSubmit}>
           <div className="user-form-head">
             <div>
-              <h2>{editingUser ? "Editar usuario" : "Novo usuario"}</h2>
-              <p>
-                {editingUser
-                  ? "Altere os campos desejados e salve as alteracoes."
-                  : "O acesso criado entra automaticamente na empresa atual."}
-              </p>
+              <h2>Novo usuario</h2>
+              <p>Cadastre primeiro os dados de acesso e depois libere os módulos.</p>
             </div>
-            {editingUser && (
+          </div>
+
+          <UserFormSteps step={formStep} />
+
+          {formStep === "info" && (
+            <>
+              <UserInfoFields
+                form={form}
+                errors={errors}
+                setField={setField}
+                canWrite={canWrite}
+                currentUser={currentUser}
+                editing={false}
+              />
+              {apiError && <div className="form-alert">{apiError}</div>}
               <button
+                className="qa-btn qa-btn-primary user-submit"
                 type="button"
-                className="sec-tool-btn"
-                onClick={cancelEdit}
+                disabled={!canWrite || (!editingUser && limitePlanAtingido)}
+                onClick={goToAccessStep}
               >
-                Cancelar
+                Continuar para liberacao
               </button>
-            )}
-          </div>
+            </>
+          )}
 
-          <Field label="Nome completo" error={errors.nome}>
-            <input
-              value={form.nome}
-              onChange={(event) => setField("nome", event.target.value)}
-              placeholder="Joao da Silva"
-              maxLength={200}
-              disabled={!canWrite}
-            />
-          </Field>
+          {formStep === "access" && (
+            <>
+              {form.role === "vendedor" ? (
+                <ModuleAccessPanel
+                  selected={form.modulos_permitidos}
+                  onToggle={toggleModulo}
+                  disabled={!canWrite}
+                />
+              ) : (
+                <FullAccessNotice role={form.role} />
+              )}
 
-          <div className="user-form-grid">
-            <Field label="Login" error={errors.login}>
-              <input
-                value={form.login}
-                onChange={(event) =>
-                  setField("login", event.target.value.replace(/\s/g, "").toLowerCase())
-                }
-                placeholder="joaosilva"
-                maxLength={100}
-                disabled={!canWrite}
-              />
-            </Field>
+              {apiError && <div className="form-alert">{apiError}</div>}
 
-            <Field label="Funcao">
-              <select
-                value={form.role}
-                onChange={(event) => setField("role", event.target.value)}
-                disabled={!canWrite}
-              >
-                <option value="vendedor">Vendedor</option>
-                <option value="gerente">Gerente</option>
-                {currentUser?.role === "admin" && (
-                  <option value="admin">Administrador</option>
-                )}
-              </select>
-            </Field>
-          </div>
-
-          <Field label="E-mail" error={errors.email}>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(event) => setField("email", event.target.value)}
-              placeholder="usuario@empresa.com.br"
-              maxLength={255}
-              disabled={!canWrite}
-            />
-          </Field>
-
-          <Field label="Telefone">
-            <input
-              value={form.telefone}
-              onChange={(event) => setField("telefone", maskPhone(event.target.value))}
-              placeholder="(00) 00000-0000"
-              disabled={!canWrite}
-            />
-          </Field>
-
-          <div className="user-form-grid">
-            <Field label={editingUser ? "Nova senha (opcional)" : "Senha"} error={errors.senha}>
-              <input
-                type="password"
-                value={form.senha}
-                onChange={(event) => setField("senha", event.target.value)}
-                placeholder={editingUser ? "Deixe em branco para nao alterar" : "Minimo 8 caracteres"}
-                maxLength={72}
-                disabled={!canWrite}
-              />
-            </Field>
-
-            <Field label="Confirmar senha" error={errors.confirmar}>
-              <input
-                type="password"
-                value={form.confirmar}
-                onChange={(event) => setField("confirmar", event.target.value)}
-                placeholder="Repita a senha"
-                maxLength={72}
-                disabled={!canWrite}
-              />
-            </Field>
-          </div>
-
-          {apiError && <div className="form-alert">{apiError}</div>}
-
-          <button
-            className="qa-btn qa-btn-primary user-submit"
-            type="submit"
-            disabled={saving || !canWrite || (!editingUser && limitePlanAtingido)}
-            title={!canWrite ? "Conta em modo somente leitura" : limitePlanAtingido ? "Limite de plano atingido" : ""}
-          >
-            {saving
-              ? editingUser ? "Salvando..." : "Cadastrando..."
-              : editingUser ? "Salvar alteracoes" : "Cadastrar usuario"}
-          </button>
+              <div className="user-form-actions">
+                <button className="sec-tool-btn" type="button" onClick={() => setFormStep("info")}>
+                  Voltar
+                </button>
+                <button
+                  className="qa-btn qa-btn-primary user-submit"
+                  type="submit"
+                  disabled={saving || !canWrite || limitePlanAtingido}
+                  title={!canWrite ? "Conta em modo somente leitura" : limitePlanAtingido ? "Limite de plano atingido" : ""}
+                >
+                  {saving ? "Cadastrando..." : "Cadastrar usuario"}
+                </button>
+              </div>
+            </>
+          )}
         </form>
 
         <section className="users-list-panel">
@@ -403,19 +386,6 @@ export function UserManagement({
             <div>
               <h2>Usuarios cadastrados</h2>
               <p>{filteredUsers.length} registros exibidos</p>
-            </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              {[['ativo','Ativos'],['inativo','Inativos'],['todos','Todos']].map(([v, l]) => (
-                <button key={v} type="button"
-                  onClick={() => setFiltroAtivo(v)}
-                  style={{
-                    padding: '4px 12px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                    border: filtroAtivo === v ? '1px solid var(--accent)' : '1px solid var(--border)',
-                    background: filtroAtivo === v ? 'var(--accent)' : 'none',
-                    color: filtroAtivo === v ? '#fff' : 'var(--text-muted)',
-                  }}
-                >{l}</button>
-              ))}
             </div>
             <div className="users-search">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -427,6 +397,24 @@ export function UserManagement({
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Buscar usuario..."
               />
+            </div>
+          </div>
+          <div className="users-filter-row">
+            <div className="users-filter-group">
+              <span>Status</span>
+              {[['ativo','Ativos'],['inativo','Inativos'],['todos','Todos']].map(([v, l]) => (
+                <button key={v} type="button" className={filtroAtivo === v ? "active" : ""} onClick={() => setFiltroAtivo(v)}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <div className="users-filter-group">
+              <span>Funcao</span>
+              {[['todos','Todas'],['gerente','Gerentes'],['vendedor','Vendedores']].map(([v, l]) => (
+                <button key={v} type="button" className={roleFilter === v ? "active" : ""} onClick={() => setRoleFilter(v)}>
+                  {l}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -443,8 +431,8 @@ export function UserManagement({
                     <th>Login</th>
                     <th>Telefone</th>
                     <th>Funcao</th>
+                    <th>Módulos</th>
                     <th>Status</th>
-                    <th>Criado em</th>
                     <th />
                   </tr>
                 </thead>
@@ -471,9 +459,11 @@ export function UserManagement({
                       <td>{formatPhone(item.telefone)}</td>
                       <td><RolePill role={item.role} /></td>
                       <td>
+                        <ModuleSummary user={item} />
+                      </td>
+                      <td>
                         <AtivoTag ativo={item.ativo !== false} />
                       </td>
-                      <td>{formatDate(item.created_at)}</td>
                       <td>
                         <div className="table-actions">
                           {canWrite && (currentUser?.role === "admin" || item.role !== "admin") && (
@@ -481,9 +471,9 @@ export function UserManagement({
                               <button
                                 type="button"
                                 className="table-action table-action-ghost"
-                                onClick={() => editingUser?.id === item.id ? cancelEdit() : startEdit(item)}
+                                onClick={() => startEdit(item)}
                               >
-                                {editingUser?.id === item.id ? "Cancelar" : "Editar"}
+                                Editar
                               </button>
                               {/* Não permite desativar a si mesmo */}
                               {item.id !== currentUser?.id && (
@@ -511,7 +501,231 @@ export function UserManagement({
           )}
         </section>
       </div>
+
+      {editingUser && (
+        <div className="user-edit-backdrop" onClick={cancelEdit}>
+          <form className="user-edit-modal" onSubmit={handleSubmit} onClick={(event) => event.stopPropagation()}>
+            <div className="user-edit-head">
+              <div>
+                <div className="dash-eyebrow">EDITAR USUARIO</div>
+                <h2>{editingUser.nome || editingUser.email}</h2>
+                <p>{editingUser.email}</p>
+              </div>
+              <button type="button" className="modal-close" onClick={cancelEdit} aria-label="Fechar">
+                ×
+              </button>
+            </div>
+
+            <UserFormSteps step={formStep} />
+
+            {formStep === "info" ? (
+              <>
+                <UserInfoFields
+                  form={form}
+                  errors={errors}
+                  setField={setField}
+                  canWrite={canWrite}
+                  currentUser={currentUser}
+                  editing
+                />
+                {apiError && <div className="form-alert">{apiError}</div>}
+                <div className="user-form-actions">
+                  <button className="sec-tool-btn" type="button" onClick={cancelEdit}>Cancelar</button>
+                  <button className="qa-btn qa-btn-primary" type="button" onClick={goToAccessStep}>
+                    Continuar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {form.role === "vendedor" ? (
+                  <ModuleAccessPanel
+                    selected={form.modulos_permitidos}
+                    onToggle={toggleModulo}
+                    disabled={!canWrite}
+                  />
+                ) : (
+                  <FullAccessNotice role={form.role} />
+                )}
+                {apiError && <div className="form-alert">{apiError}</div>}
+                <div className="user-form-actions">
+                  <button className="sec-tool-btn" type="button" onClick={() => setFormStep("info")}>Voltar</button>
+                  <button className="qa-btn qa-btn-primary" type="submit" disabled={saving || !canWrite}>
+                    {saving ? "Salvando..." : "Salvar alteracoes"}
+                  </button>
+                </div>
+              </>
+            )}
+          </form>
+        </div>
+      )}
     </section>
+  );
+}
+
+function UserFormSteps({ step }) {
+  return (
+    <div className="user-stepper" aria-label="Etapas do cadastro">
+      <span className={step === "info" ? "active" : "done"}>
+        <b>1</b>
+        Informacoes
+      </span>
+      <i />
+      <span className={step === "access" ? "active" : ""}>
+        <b>2</b>
+        Liberacao
+      </span>
+    </div>
+  );
+}
+
+function UserInfoFields({ form, errors, setField, canWrite, currentUser, editing }) {
+  return (
+    <>
+      <Field label="Nome completo" error={errors.nome}>
+        <input
+          value={form.nome}
+          onChange={(event) => setField("nome", event.target.value)}
+          placeholder="Joao da Silva"
+          maxLength={200}
+          disabled={!canWrite}
+        />
+      </Field>
+
+      <div className="user-form-grid">
+        <Field label="Login" error={errors.login}>
+          <input
+            value={form.login}
+            onChange={(event) =>
+              setField("login", event.target.value.replace(/\s/g, "").toLowerCase())
+            }
+            placeholder="joaosilva"
+            maxLength={100}
+            disabled={!canWrite}
+          />
+        </Field>
+
+        <Field label="Funcao">
+          <select
+            value={form.role}
+            onChange={(event) => setField("role", event.target.value)}
+            disabled={!canWrite}
+          >
+            <option value="vendedor">Vendedor</option>
+            <option value="gerente">Gerente</option>
+            {currentUser?.role === "admin" && (
+              <option value="admin">Administrador</option>
+            )}
+          </select>
+        </Field>
+      </div>
+
+      <Field label="E-mail" error={errors.email}>
+        <input
+          type="email"
+          value={form.email}
+          onChange={(event) => setField("email", event.target.value)}
+          placeholder="usuario@empresa.com.br"
+          maxLength={255}
+          disabled={!canWrite}
+        />
+      </Field>
+
+      <Field label="Telefone">
+        <input
+          value={form.telefone}
+          onChange={(event) => setField("telefone", maskPhone(event.target.value))}
+          placeholder="(00) 00000-0000"
+          disabled={!canWrite}
+        />
+      </Field>
+
+      <div className="user-form-grid">
+        <Field label={editing ? "Nova senha (opcional)" : "Senha"} error={errors.senha}>
+          <input
+            type="password"
+            value={form.senha}
+            onChange={(event) => setField("senha", event.target.value)}
+            placeholder={editing ? "Deixe em branco para nao alterar" : "Minimo 8 caracteres"}
+            maxLength={72}
+            disabled={!canWrite}
+          />
+        </Field>
+
+        <Field label="Confirmar senha" error={errors.confirmar}>
+          <input
+            type="password"
+            value={form.confirmar}
+            onChange={(event) => setField("confirmar", event.target.value)}
+            placeholder="Repita a senha"
+            maxLength={72}
+            disabled={!canWrite}
+          />
+        </Field>
+      </div>
+    </>
+  );
+}
+
+function FullAccessNotice({ role }) {
+  return (
+    <div className="full-access-notice">
+      <strong>{ROLE_LABELS[role] || "Usuario"} com acesso completo</strong>
+      <span>Gerentes e administradores acessam todos os módulos operacionais permitidos para sua função.</span>
+    </div>
+  );
+}
+
+function ModuleAccessPanel({ selected, onToggle, disabled }) {
+  const modules = normalizeModules(selected, DEFAULT_VENDEDOR_MODULES);
+
+  return (
+    <div className="module-access-panel">
+      <div className="module-access-head">
+        <div>
+          <strong>Módulos liberados</strong>
+          <span>Escolha quais telas aparecem para este vendedor.</span>
+        </div>
+        <span>{modules.length}/{APP_MODULES.length}</span>
+      </div>
+      <div className="module-access-grid">
+        {APP_MODULES.map((module) => {
+          const checked = modules.includes(module.id);
+          return (
+            <button
+              key={module.id}
+              type="button"
+              className={"module-access-item" + (checked ? " active" : "")}
+              onClick={() => onToggle(module.id)}
+              disabled={disabled}
+            >
+              <span className="module-access-check">{checked ? "✓" : ""}</span>
+              <span>
+                <b>{module.label}</b>
+                <small>{module.description}</small>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ModuleSummary({ user }) {
+  if (user.role === "admin" || user.role === "gerente") {
+    return <span className="module-summary-all">Acesso completo</span>;
+  }
+  const modules = normalizeModules(user.modulos_permitidos, DEFAULT_VENDEDOR_MODULES);
+  const first = modules
+    .slice(0, 2)
+    .map((id) => APP_MODULES.find((module) => module.id === id)?.label)
+    .filter(Boolean);
+  return (
+    <span className="module-summary">
+      {modules.length === 0 ? "Nenhum módulo" : `${modules.length} módulos`}
+      {first.length > 0 && <small>{first.join(", ")}{modules.length > first.length ? "..." : ""}</small>}
+    </span>
   );
 }
 

@@ -2,10 +2,9 @@ import { NextResponse } from 'next/server';
 
 const PROTECTED_PREFIX = '/app';
 
-export function middleware(request) {
+export function proxy(request) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('auth_token')?.value;
-
   const isProtected = pathname.startsWith(PROTECTED_PREFIX);
 
   if (!token && isProtected) {

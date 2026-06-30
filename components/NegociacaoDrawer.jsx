@@ -1,7 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getEtapas, createEtapa, updateEtapa } from '../lib/api';
+import { useEffect, useState } from 'react';
+import { createEtapa, getEtapas, updateEtapa } from '../lib/api';
+import { fmtBRL } from '../lib/data';
+
+function currencyDraft(value) {
+  const number = Number(value || 0);
+  return number ? number.toLocaleString('pt-BR') : '';
+}
+
+function parseCurrency(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return undefined;
+  const normalized = raw.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function historicalValueFor(etapas, index, currentValue) {
+  const etapa = etapas[index];
+  if (etapa?.valor_novo !== null && etapa?.valor_novo !== undefined) return etapa.valor_novo;
+  if (etapa?.valor_anterior !== null && etapa?.valor_anterior !== undefined) return etapa.valor_anterior;
+
+  for (let i = index + 1; i < etapas.length; i += 1) {
+    const next = etapas[i];
+    if (next?.valor_anterior !== null && next?.valor_anterior !== undefined) return next.valor_anterior;
+    if (next?.valor_novo !== null && next?.valor_novo !== undefined) return next.valor_novo;
+  }
+
+  return currentValue;
+}
 
 export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
   const [etapas, setEtapas] = useState([]);
@@ -9,10 +37,12 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
   const [error, setError] = useState(null);
   const [adding, setAdding] = useState(false);
   const [newDraft, setNewDraft] = useState('');
+  const [newValueDraft, setNewValueDraft] = useState('');
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState('');
+  const [editValueDraft, setEditValueDraft] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState(null);
 
@@ -25,6 +55,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
     if (!lot?.db_id) return;
     setLoading(true);
     setError(null);
+    setNewValueDraft(currencyDraft(lot.preco));
     getEtapas(lot.db_id)
       .then((list) => {
         setEtapas(list);
@@ -32,16 +63,23 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [lot?.db_id]); // notifyUltimaEtapa intentionally omitted — runs only on lot change
+  }, [lot?.db_id]);
+
+  function etapaResumo(etapa) {
+    if (!etapa) return null;
+    return {
+      id: etapa.id,
+      descricao: etapa.descricao,
+      criado_em: etapa.criado_em,
+      criado_por_nome: etapa.criado_por_nome,
+      valor_anterior: etapa.valor_anterior,
+      valor_novo: etapa.valor_novo,
+    };
+  }
 
   function notifyUltimaEtapa(list) {
     const last = list.length > 0 ? list[list.length - 1] : null;
-    onUltimaEtapaChange?.(lot.db_id, lot.loteamento_id, last ? {
-      id: last.id,
-      descricao: last.descricao,
-      criado_em: last.criado_em,
-      criado_por_nome: last.criado_por_nome,
-    } : null);
+    onUltimaEtapaChange?.(lot.db_id, lot.loteamento_id, etapaResumo(last));
   }
 
   async function handleAdd() {
@@ -49,9 +87,12 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
     setAddSaving(true);
     setAddError(null);
     try {
-      const created = await createEtapa(lot.db_id, newDraft);
+      const created = await createEtapa(lot.db_id, newDraft, parseCurrency(newValueDraft));
       const newList = [...etapas, created];
       setEtapas(newList);
+      if (created.valor_novo !== null && created.valor_novo !== undefined) {
+        setNewValueDraft(currencyDraft(created.valor_novo));
+      }
       setNewDraft('');
       setAdding(false);
       notifyUltimaEtapa(newList);
@@ -65,6 +106,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
   function startEdit(etapa) {
     setEditingId(etapa.id);
     setEditDraft(etapa.descricao);
+    setEditValueDraft(currencyDraft(etapa.valor_novo ?? lot.preco));
     setEditError(null);
   }
 
@@ -78,7 +120,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
     setEditSaving(true);
     setEditError(null);
     try {
-      const updated = await updateEtapa(editingId, editDraft);
+      const updated = await updateEtapa(editingId, editDraft, parseCurrency(editValueDraft));
       const newList = etapas.map((e) => (e.id === editingId ? updated : e));
       setEtapas(newList);
       setEditingId(null);
@@ -97,11 +139,12 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
       <aside className="neg-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="neg-drawer-head">
           <div>
-            <div className="neg-drawer-eyebrow">HISTÓRICO DE NEGOCIAÇÃO</div>
+            <div className="neg-drawer-eyebrow">HISTORICO DE NEGOCIACAO</div>
             <h3 className="neg-drawer-title">Lote {lot.id}</h3>
-            {lot.cliente?.nome && (
-              <p className="neg-drawer-sub">Cliente: {lot.cliente.nome}</p>
-            )}
+            <p className="neg-drawer-sub">
+              {lot.cliente?.nome ? `Cliente: ${lot.cliente.nome} - ` : ''}
+              Valor atual {fmtBRL(lot.preco)}
+            </p>
           </div>
           <button className="neg-drawer-close" onClick={onClose} aria-label="Fechar">
             <svg width="14" height="14" viewBox="0 0 14 14">
@@ -125,13 +168,16 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
                   etapa={etapa}
                   index={index + 1}
                   isLast={index === etapas.length - 1}
+                  displayValue={historicalValueFor(etapas, index, lot.preco)}
                   user={user}
                   isEditing={editingId === etapa.id}
                   editDraft={editDraft}
+                  editValueDraft={editValueDraft}
                   editSaving={editSaving}
                   editError={editingId === etapa.id ? editError : null}
                   onStartEdit={() => startEdit(etapa)}
                   onEditChange={setEditDraft}
+                  onEditValueChange={setEditValueDraft}
                   onEditSave={handleEdit}
                   onEditCancel={cancelEdit}
                 />
@@ -145,11 +191,23 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
             {adding ? (
               <div className="neg-new-etapa">
                 <div className="neg-new-etapa-label">Nova etapa</div>
+                <label className="neg-field">
+                  <span>Valor negociado</span>
+                  <div className="neg-money-field">
+                    <span>R$</span>
+                    <input
+                      value={newValueDraft}
+                      onChange={(e) => setNewValueDraft(e.target.value)}
+                      placeholder="0,00"
+                      inputMode="decimal"
+                    />
+                  </div>
+                </label>
                 <textarea
                   className="neg-textarea"
                   value={newDraft}
                   onChange={(e) => setNewDraft(e.target.value)}
-                  placeholder="Descreva a etapa da negociação..."
+                  placeholder="Descreva a etapa da negociacao..."
                   rows={4}
                   maxLength={4000}
                   autoFocus
@@ -160,7 +218,12 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
                   <div className="neg-etapa-actions">
                     <button
                       className="neg-btn neg-btn-ghost"
-                      onClick={() => { setAdding(false); setNewDraft(''); setAddError(null); }}
+                      onClick={() => {
+                        setAdding(false);
+                        setNewDraft('');
+                        setNewValueDraft(currencyDraft(lot.preco));
+                        setAddError(null);
+                      }}
                       disabled={addSaving}
                     >
                       Cancelar
@@ -190,18 +253,40 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
   );
 }
 
-function EtapaItem({ etapa, index, isLast, user, isEditing, editDraft, editSaving, editError, onStartEdit, onEditChange, onEditSave, onEditCancel }) {
+function EtapaItem({
+  etapa,
+  index,
+  isLast,
+  displayValue,
+  user,
+  isEditing,
+  editDraft,
+  editValueDraft,
+  editSaving,
+  editError,
+  onStartEdit,
+  onEditChange,
+  onEditValueChange,
+  onEditSave,
+  onEditCancel,
+}) {
   const canEdit = user && (
     user.role === 'admin' || user.role === 'gerente' || user.id === etapa.criado_por
   );
 
   const date = new Date(etapa.criado_em).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 
   const wasEdited = etapa.atualizado_em && etapa.criado_em &&
     new Date(etapa.atualizado_em).getTime() - new Date(etapa.criado_em).getTime() > 2000;
+  const hasValueChange = etapa.valor_anterior !== null && etapa.valor_anterior !== undefined &&
+    etapa.valor_novo !== null && etapa.valor_novo !== undefined &&
+    Number(etapa.valor_anterior) !== Number(etapa.valor_novo);
 
   return (
     <div className="neg-etapa">
@@ -229,6 +314,18 @@ function EtapaItem({ etapa, index, isLast, user, isEditing, editDraft, editSavin
 
         {isEditing ? (
           <div className="neg-etapa-editor">
+            <label className="neg-field">
+              <span>Valor negociado</span>
+              <div className="neg-money-field">
+                <span>R$</span>
+                <input
+                  value={editValueDraft}
+                  onChange={(e) => onEditValueChange(e.target.value)}
+                  placeholder="0,00"
+                  inputMode="decimal"
+                />
+              </div>
+            </label>
             <textarea
               className="neg-textarea"
               value={editDraft}
@@ -255,7 +352,21 @@ function EtapaItem({ etapa, index, isLast, user, isEditing, editDraft, editSavin
             </div>
           </div>
         ) : (
-          <p className="neg-etapa-texto">{etapa.descricao}</p>
+          <>
+            {hasValueChange ? (
+              <div className="neg-value-change">
+                <span>{fmtBRL(etapa.valor_anterior)}</span>
+                <span>para</span>
+                <strong>{fmtBRL(etapa.valor_novo)}</strong>
+              </div>
+            ) : (
+              <div className="neg-value-change">
+                <span>Valor</span>
+                <strong>{fmtBRL(displayValue)}</strong>
+              </div>
+            )}
+            <p className="neg-etapa-texto">{etapa.descricao}</p>
+          </>
         )}
       </div>
     </div>
