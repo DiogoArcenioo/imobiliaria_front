@@ -20,7 +20,7 @@ const featureRows = [
   {
     eyebrow: 'DASHBOARD REAL',
     title: 'A operacao inteira aparece em uma tela de trabalho.',
-    text: 'Vendas, estoque, agenda, locacoes e performance ficam organizados para gerente, vendedor e admin.',
+    text: 'Vendas, estoque, agenda, locacoes e performance ficam organizados para toda a equipe comercial.',
     points: ['Indicadores por empresa', 'Ultimas vendas', 'Agenda do time', 'Resumo de locacoes'],
     visual: <DashboardShot />,
   },
@@ -44,7 +44,7 @@ const moduleCards = [
   {
     title: 'Gerenciamento de equipe',
     text: 'Controle usuarios por perfil, permissoes por modulo e acesso por empresa.',
-    meta: 'Admin, gerente e vendedor',
+    meta: 'Equipe e permissoes',
   },
   {
     title: 'Agenda comercial',
@@ -297,24 +297,24 @@ function DashboardShot({ large = false }) {
 
 function MapShot() {
   const lots = [
-    ['A01', 12, 22, 76, 48, 'sold'],
-    ['A02', 88, 22, 76, 48, 'reserved'],
-    ['A03', 164, 22, 76, 48, 'available'],
-    ['A04', 240, 22, 76, 48, 'available'],
-    ['A05', 316, 22, 76, 48, 'reserved'],
-    ['A06', 392, 22, 76, 48, 'available'],
-    ['A07', 12, 104, 76, 48, 'available'],
-    ['A08', 88, 104, 76, 48, 'available'],
-    ['A09', 164, 104, 76, 48, 'sold'],
-    ['A10', 240, 104, 76, 48, 'available'],
-    ['A11', 316, 104, 68, 48, 'available'],
-    ['A12', 384, 104, 76, 48, 'reserved'],
-    ['A13', 384, 152, 76, 56, 'available'],
-    ['A14', 384, 208, 76, 48, 'sold'],
+    ['A01', 18, 20, 74, 48, 'sold'],
+    ['A02', 92, 20, 74, 48, 'reserved'],
+    ['A03', 166, 20, 74, 48, 'available'],
+    ['A04', 240, 20, 74, 48, 'available'],
+    ['A05', 314, 20, 74, 48, 'reserved'],
+    ['A06', 388, 20, 74, 48, 'available'],
+    ['A07', 18, 116, 74, 48, 'available'],
+    ['A08', 92, 116, 74, 48, 'available'],
+    ['A09', 166, 116, 74, 48, 'sold'],
+    ['A10', 240, 116, 74, 48, 'available'],
+    ['A11', 314, 116, 74, 48, 'available'],
+    ['A12', 388, 116, 74, 48, 'reserved'],
+    ['A13', 388, 178, 74, 60, 'available'],
+    ['A14', 388, 248, 74, 60, 'sold'],
   ];
   const trees = [
-    [40, 198, 9], [96, 214, 12], [145, 192, 10], [240, 222, 14],
-    [286, 188, 9], [330, 218, 11], [355, 180, 8], [194, 218, 9],
+    [48, 194, 8], [104, 218, 11], [157, 194, 9], [242, 222, 12],
+    [294, 194, 8], [337, 222, 10], [350, 188, 7], [202, 246, 8],
   ];
   return (
     <div className="lp-map-shot">
@@ -324,26 +324,34 @@ function MapShot() {
             <image href="/textures/fundo.jpg" width="90" height="90" preserveAspectRatio="xMidYMid slice" />
           </pattern>
           <filter id="lp-map-shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="6" stdDeviation="5" floodColor="#0f172a" floodOpacity=".2" />
+            <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#0f172a" floodOpacity=".18" />
           </filter>
+          <linearGradient id="lp-park-fill" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#7fba4b" stopOpacity=".78" />
+            <stop offset="1" stopColor="#5c9b37" stopOpacity=".82" />
+          </linearGradient>
         </defs>
         <rect width="520" height="330" fill="url(#lp-map-bg-real)" />
         <g opacity=".16" stroke="#fff" strokeWidth="1">
           {Array.from({ length: 9 }).map((_, i) => <line key={`v-${i}`} x1={i * 65} y1="0" x2={i * 65} y2="330" />)}
           {Array.from({ length: 6 }).map((_, i) => <line key={`h-${i}`} x1="0" y1={i * 65} x2="520" y2={i * 65} />)}
         </g>
-        <rect x="10" y="84" width="470" height="28" rx="14" fill="#d9d6bd" filter="url(#lp-map-shadow)" />
-        <rect x="18" y="91" width="454" height="14" rx="7" fill="#3f4448" />
-        <path d="M480 98 L480 286" fill="none" stroke="#d9d6bd" strokeWidth="32" strokeLinecap="round" filter="url(#lp-map-shadow)" />
-        <path d="M480 98 L480 286" fill="none" stroke="#3f4448" strokeWidth="18" strokeLinecap="round" />
+        <path d="M18 92 H487 V292" fill="none" stroke="#d9d6bd" strokeWidth="34" strokeLinecap="round" strokeLinejoin="round" filter="url(#lp-map-shadow)" />
+        <path d="M18 92 H487 V292" fill="none" stroke="#41474b" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" />
         <g stroke="#d7d0a8" strokeWidth="1.2" strokeDasharray="10 9" opacity=".9">
-          <line x1="24" y1="98" x2="458" y2="98" />
-          <line x1="480" y1="113" x2="480" y2="276" />
+          <path d="M20 92 H487 V292" fill="none" />
         </g>
-        <rect x="12" y="154" width="368" height="124" fill="rgba(93,164,56,.52)" stroke="rgba(50,86,37,.35)" />
-        <rect x="18" y="194" width="58" height="68" rx="4" fill="#4597a1" stroke="#845f39" strokeWidth="3" />
-        <text x="47" y="231" textAnchor="middle" fill="#fff" fontSize="10" fontWeight="800" fontStyle="italic">Lago</text>
-        <text x="214" y="220" textAnchor="middle" fill="#334155" fontSize="9">Praca</text>
+        <rect x="18" y="178" width="352" height="130" rx="5" fill="url(#lp-park-fill)" stroke="rgba(50,86,37,.45)" />
+        <path d="M33 289 C91 267 135 296 190 276 S287 269 355 284" fill="none" stroke="#d8cda7" strokeWidth="7" strokeLinecap="round" opacity=".72" />
+        <rect x="34" y="216" width="61" height="70" rx="8" fill="#4b9eae" stroke="#76583c" strokeWidth="3" />
+        <path d="M39 230 C52 222 75 224 90 232" fill="none" stroke="#79c6d2" strokeWidth="2" opacity=".8" />
+        <text x="64.5" y="255" textAnchor="middle" fill="#fff" fontSize="10" fontWeight="800" fontStyle="italic">Lago</text>
+        <g transform="translate(256 252)">
+          <circle r="23" fill="rgba(255,255,255,.14)" stroke="rgba(255,255,255,.45)" strokeDasharray="3 3" />
+          <circle r="7" fill="#d9c694" />
+          <path d="M-13 0 H13 M0 -13 V13" stroke="#f5ead0" strokeWidth="3" strokeLinecap="round" />
+        </g>
+        <text x="256" y="286" textAnchor="middle" fill="#315d27" fontSize="9" fontWeight="800">PRACA CENTRAL</text>
         {trees.map(([cx, cy, r]) => (
           <g key={`${cx}-${cy}`}>
             <circle cx={cx} cy={cy} r={r} fill="#4c7f2e" />
@@ -354,7 +362,7 @@ function MapShot() {
         {lots.map(([label, x, y, w, h, status]) => (
           <g key={label}>
             <rect x={x} y={y} width={w} height={h} className={`lp-lot-${status}`} />
-            <text x={x + w / 2} y={y + h / 2 + 4} textAnchor="middle" fill="#101828" fontSize="8" fontWeight="900">{label}</text>
+            <text x={x + w / 2} y={y + h / 2 + 3} textAnchor="middle" fill="#1a1f24" fontSize="8.5" fontFamily="JetBrains Mono" fontWeight="600">{label}</text>
           </g>
         ))}
       </svg>
@@ -505,8 +513,8 @@ function Pricing() {
     <section id="planos" ref={ref} className={`lp-pricing ${visible ? 'is-visible' : ''}`}>
       <div className="lp-section-head">
         <span className="lp-kicker">PLANOS DO BANCO</span>
-        <h2>Os planos exibidos aqui sao os planos ativos cadastrados no admin.</h2>
-        <p>Preco, limites, destaque, cor e recursos vem de <code>/assinaturas/planos</code>.</p>
+        <h2>Planos flexiveis para acompanhar cada momento da sua empresa.</h2>
+        <p>Escolha o plano que melhor acompanha o momento e o crescimento da sua empresa.</p>
       </div>
 
       {loading && <div className="lp-plan-state">Carregando planos cadastrados...</div>}
@@ -733,9 +741,10 @@ const LANDING_CSS = `
   .lp-btn:disabled { cursor: wait; opacity: .7; transform: none; }
   .lp-btn-lg { min-height: 48px; padding: 12px 20px; font-size: 14px; }
   .lp-btn-full { width: 100%; }
-  .lp-btn-primary { background: #3288e0; color: #fff; box-shadow: 0 12px 28px rgba(50,136,224,.24); }
-  .lp-btn-primary:hover { background: #2579ce; }
-  .lp-btn-dark { background: #101828; color: #fff; border-color: #101828; }
+  .lp-page .lp-btn-primary { background: #3288e0; color: #fff; box-shadow: 0 12px 28px rgba(50,136,224,.24); }
+  .lp-page .lp-btn-primary:hover { background: #2579ce; color: #fff; }
+  .lp-page .lp-btn-dark { background: #101828; color: #fff; border-color: #101828; }
+  .lp-page .lp-btn-dark:hover { background: #1d2939; border-color: #1d2939; color: #fff; }
   .lp-btn-ghost { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.22); color: inherit; }
   .lp-nav-scrolled .lp-btn-ghost { background: #fff; border-color: #d0d5dd; color: #344054; }
   .lp-hero {
@@ -1051,15 +1060,15 @@ const LANDING_CSS = `
     overflow: hidden;
     background: #78ad3c;
   }
-  .lp-lot-available { fill: rgba(210,222,205,.82); stroke: rgba(255,255,255,.62); stroke-width: 1; }
-  .lp-lot-reserved { fill: rgba(234,205,18,.86); stroke: rgba(180,83,9,.46); stroke-width: 1; }
-  .lp-lot-sold { fill: rgba(212,94,54,.82); stroke: rgba(185,28,28,.42); stroke-width: 1; }
+  .lp-lot-available { fill: #b0b8c1; fill-opacity: .62; stroke: #999; stroke-width: 1.2; }
+  .lp-lot-reserved { fill: #ffbb00; fill-opacity: .62; stroke: #999; stroke-width: 1.2; }
+  .lp-lot-sold { fill: #e84040; fill-opacity: .62; stroke: #999; stroke-width: 1.2; }
   .lp-map-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 14px 4px 2px; color: #475467; font-size: 12px; font-weight: 800; }
   .lp-map-legend span { display: inline-flex; align-items: center; gap: 7px; }
   .lp-map-legend i { width: 10px; height: 10px; border-radius: 3px; display: block; }
-  .lp-map-legend .available { background: #22c55e; }
-  .lp-map-legend .reserved { background: #f59e0b; }
-  .lp-map-legend .sold { background: #ef4444; }
+  .lp-map-legend .available { background: #b0b8c1; }
+  .lp-map-legend .reserved { background: #ffbb00; }
+  .lp-map-legend .sold { background: #e84040; }
   .lp-building-shot { display: grid; grid-template-columns: 1.1fr .9fr; gap: 14px; }
   .lp-building-shot-3d {
     display: block;

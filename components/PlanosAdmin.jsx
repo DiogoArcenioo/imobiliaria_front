@@ -250,13 +250,13 @@ export function PlanosAdmin() {
   const [success, setSuccess] = useState("");
   const [slugManual, setSlugManual] = useState(false);
 
-  const carregarPlanos = useCallback(async () => {
+  const carregarPlanos = useCallback(async (preferredId = null) => {
     setLoading(true);
     try {
       const data = await getAdminPlanos();
       setPlanos(data);
       if (data.length > 0) {
-        const plano = data[0];
+        const plano = data.find((item) => item.id === preferredId) || data[0];
         setEditingId(plano.id);
         setSlugManual(true);
         setForm({
@@ -276,6 +276,10 @@ export function PlanosAdmin() {
           recursos: plano.recursos ?? [],
           ativo: plano.ativo ?? true,
         });
+      } else {
+        setEditingId(null);
+        setSlugManual(false);
+        setForm({ ...EMPTY_FORM, recursos: [] });
       }
     } finally {
       setLoading(false);
@@ -315,6 +319,14 @@ export function PlanosAdmin() {
     });
   }
 
+  function startNewPlan() {
+    setEditingId(null);
+    setSlugManual(false);
+    setError("");
+    setSuccess("");
+    setForm({ ...EMPTY_FORM, recursos: [] });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.nome.trim()) { setError("Informe o nome do plano."); return; }
@@ -342,11 +354,12 @@ export function PlanosAdmin() {
       if (editingId) {
         await atualizarPlano(editingId, payload);
         setSuccess("Plano atualizado com sucesso!");
+        await carregarPlanos(editingId);
       } else {
-        await criarPlano(payload);
+        const created = await criarPlano(payload);
         setSuccess("Plano criado com sucesso!");
+        await carregarPlanos(created?.id);
       }
-      await carregarPlanos();
     } catch (err) {
       setError(err.message || "Erro ao salvar plano.");
     } finally {
@@ -381,7 +394,18 @@ export function PlanosAdmin() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="sec-tool-btn" onClick={carregarPlanos} disabled={loading}>
+          <button
+            className="sec-tool-btn"
+            onClick={startNewPlan}
+            disabled={saving}
+            style={{ background: "#3288e0", borderColor: "#3288e0", color: "#fff" }}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+              <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+            Novo plano
+          </button>
+          <button className="sec-tool-btn" onClick={() => carregarPlanos(editingId)} disabled={loading}>
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
               <path d="M14 8A6 6 0 1 1 8 2a6 6 0 0 1 4.24 1.76L14 2v4h-4l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -399,7 +423,7 @@ export function PlanosAdmin() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
             <div>
               <h2 style={{ margin: 0, fontSize: "0.9375rem", fontWeight: 700, color: "#0d1b3e" }}>
-                {editingId ? "Editar plano" : "Configurar plano"}
+                {editingId ? "Editar plano" : "Novo plano"}
               </h2>
               {editingId && (
                 <p style={{ margin: "2px 0 0", fontSize: "0.75rem", color: "#9ca3af" }}>
