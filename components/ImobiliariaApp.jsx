@@ -14,11 +14,13 @@ import { AdminPanel } from "./AdminPanel";
 import { UserManagement } from "./UserManagement";
 import { PredioManagement } from "./PredioManagement";
 import { PredioWizard } from "./PredioWizard";
+import { CasasPanel } from "./CasasPanel";
 import { Building3DView } from "./Building3DView";
 import { LocacoesPanel } from "./LocacoesPanel";
 import { RelatoriosPanel } from "./RelatoriosPanel";
 import { ComercialPanel } from "./ComercialPanel";
 import { PlanosPagina } from "./PlanosPagina";
+import { AgendaPanel } from "./AgendaPanel";
 import {
   TweakColor,
   TweakRadio,
@@ -59,6 +61,12 @@ import {
   saveFloorPlan,
   updateApartamentoStatus,
   updateApartamento,
+  getCasas,
+  createCasa,
+  updateCasa,
+  deleteCasa,
+  updateCasaStatus,
+  createCasaLocacao,
   getLocacoes,
   getLocacoesResumo,
   encerrarLocacao,
@@ -86,11 +94,13 @@ const VIEW_MODULE = {
   editor: "loteamentos",
   predios: "predios",
   predio: "predios",
+  casas: "casas",
   locacoes: "locacoes",
   comercial: "comercial",
   lotes: "lotes",
   vendas: "vendas",
   clientes: "clientes",
+  agenda: "agenda",
   relatorios: "relatorios",
 };
 
@@ -139,6 +149,8 @@ export default function ImobiliariaApp() {
   const [activePredioId, setActivePredioId] = useState(null);
   const [showPredioWizard, setShowPredioWizard] = useState(false);
   const [editingAndar, setEditingAndar] = useState(false);
+  const [casas, setCasas] = useState([]);
+  const [casasLoading, setCasasLoading] = useState(false);
   const [locacoes, setLocacoes] = useState([]);
   const [locacoesResumo, setLocacoesResumo] = useState({});
   const [locacoesLoading, setLocacoesLoading] = useState(false);
@@ -308,6 +320,18 @@ export default function ImobiliariaApp() {
     }
   }, []);
 
+  const fetchCasas = useCallback(async () => {
+    setCasasLoading(true);
+    try {
+      const data = await getCasas();
+      setCasas(data);
+    } catch (err) {
+      showToast("Erro ao carregar casas: " + err.message, "error");
+    } finally {
+      setCasasLoading(false);
+    }
+  }, []);
+
   const fetchLocacoes = useCallback(async (status = locacoesStatusFilter) => {
     setLocacoesLoading(true);
     try {
@@ -348,6 +372,7 @@ export default function ImobiliariaApp() {
             setLoading(true);
             fetchLoteamentos();
             fetchPredios();
+            fetchCasas();
             fetchUsers();
             // Carrega dados filtrados pela empresa restaurada do localStorage
             fetchTiposCancelamento();
@@ -357,7 +382,7 @@ export default function ImobiliariaApp() {
         }
       })
       .catch((err) => showToast('Erro ao carregar empresas: ' + err.message, 'error'));
-  }, [user?.role, fetchLoteamentos, fetchPredios, fetchUsers, fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
+  }, [user?.role, fetchLoteamentos, fetchPredios, fetchCasas, fetchUsers, fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
 
   const onSelectEmpresa = useCallback((empresa) => {
     setSelectedEmpresa(empresa);
@@ -370,6 +395,7 @@ export default function ImobiliariaApp() {
     // Limpa TODOS os dados da empresa anterior
     setLoteamentos([]);
     setPredios([]);
+    setCasas([]);
     setLocacoes([]);
     setLocacoesResumo({});
     setUsuarios([]);
@@ -381,30 +407,42 @@ export default function ImobiliariaApp() {
       // Recarrega tudo para a nova empresa selecionada
       fetchLoteamentos();
       fetchPredios();
+      fetchCasas();
       fetchUsers();
       fetchTiposCancelamento();
       fetchMotivosCancelamento();
       fetchCancelamentosLog();
     }
-  }, [fetchLoteamentos, fetchPredios, fetchUsers, fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
+  }, [fetchLoteamentos, fetchPredios, fetchCasas, fetchUsers, fetchTiposCancelamento, fetchMotivosCancelamento, fetchCancelamentosLog]);
 
-  const fetchClientes = useCallback(async (search = "") => {
+  const fetchClientes = useCallback(async (search = "", options = {}) => {
     setClientesLoading(true);
     try {
       const data = await getClientes(search);
       setClientes(data);
       return data;
     } catch (err) {
-      showToast("Erro ao carregar clientes: " + err.message, "error");
+      if (options.showError !== false) {
+        showToast("Erro ao carregar clientes: " + err.message, "error");
+      }
+      if (options.throwError) throw err;
       return [];
     } finally {
       setClientesLoading(false);
     }
   }, []);
 
+  const searchClientesSilently = useCallback((search = "") => (
+    fetchClientes(search, { showError: false, throwError: true })
+  ), [fetchClientes]);
+
   useEffect(() => {
     if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["predios", "vendas"])) fetchPredios();
   }, [fetchPredios, user, selectedEmpresa]);
+
+  useEffect(() => {
+    if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["casas", "vendas", "locacoes"])) fetchCasas();
+  }, [fetchCasas, user, selectedEmpresa]);
 
   useEffect(() => {
     if ((user?.role !== 'admin' || selectedEmpresa) && userHasAnyModule(user, ["locacoes"])) fetchLocacoes();
@@ -443,6 +481,56 @@ export default function ImobiliariaApp() {
     } catch (err) {
       showToast("Erro ao criar prédio: " + err.message, "error");
     }
+  };
+
+  const onCreateCasa = async (data) => {
+    if (user?.somente_leitura) {
+      showToast("Conta em modo somente leitura.", "error");
+      return;
+    }
+    const created = await createCasa(data);
+    setCasas((prev) => [created, ...prev]);
+    showToast(`Casa "${created.nome}" cadastrada com sucesso`);
+    return created;
+  };
+
+  const onUpdateCasa = async (id, data) => {
+    if (user?.somente_leitura) {
+      showToast("Conta em modo somente leitura.", "error");
+      return;
+    }
+    const updated = await updateCasa(id, data);
+    setCasas((prev) => prev.map((casa) => (casa.id === id ? updated : casa)));
+    showToast("Casa atualizada");
+    return updated;
+  };
+
+  const onDeleteCasa = async (casa) => {
+    if (!window.confirm(`Remover a casa "${casa.nome}"?`)) return;
+    await deleteCasa(casa.id);
+    await fetchCasas();
+    showToast("Casa removida ou arquivada");
+  };
+
+  const onUpdateCasaStatus = async (casa, status, clienteId, observacao, dataVenda) => {
+    if (user?.somente_leitura) {
+      showToast("Conta em modo somente leitura.", "error");
+      return;
+    }
+    const updated = await updateCasaStatus(casa.id, status, clienteId, observacao, dataVenda);
+    setCasas((prev) => prev.map((item) => (item.id === casa.id ? updated : item)));
+    await Promise.all([fetchCasas(), fetchLocacoes()]);
+    showToast(status === 'disponivel' ? 'Casa liberada' : status === 'reservado' ? 'Casa reservada' : 'Casa vendida');
+  };
+
+  const onCreateCasaLocacao = async (casa, data) => {
+    if (user?.somente_leitura) {
+      showToast("Conta em modo somente leitura.", "error");
+      return;
+    }
+    await createCasaLocacao(casa.id, data);
+    await Promise.all([fetchCasas(), fetchLocacoes()]);
+    showToast(`Locação da casa "${casa.nome}" iniciada`);
   };
 
   const onSaveFloorPlan = async (predioId, andarNumero, shapes, aps, meta) => {
@@ -873,6 +961,7 @@ export default function ImobiliariaApp() {
           clientes: clientes.length,
           usuarios: usuarios.length,
           predios: predios.length,
+          casas: casas.length,
           locacoes: locacoesResumo.total_ativas || 0,
         }}
         user={user}
@@ -963,9 +1052,11 @@ export default function ImobiliariaApp() {
             <SalesView
               loteamentos={loteamentos}
               predios={predios}
+              casas={casas}
               loading={loading}
               onOpenLoteamento={onOpenLoteamento}
               onOpenPredios={() => { setView("predios"); setActivePredioId(null); }}
+              onOpenCasas={() => setView("casas")}
               user={user}
             />
           )}
@@ -1057,6 +1148,14 @@ export default function ImobiliariaApp() {
             />
           )}
 
+          {view === "agenda" && (
+            <AgendaPanel
+              user={user}
+              usuarios={usuarios}
+              onToast={(message) => showToast(message)}
+            />
+          )}
+
           {view === "map" && loteamento && (
             <div className="map-container" ref={mapContainerRef}>
               <MapView
@@ -1136,6 +1235,22 @@ export default function ImobiliariaApp() {
             />
           )}
 
+          {view === "casas" && (
+            <CasasPanel
+              casas={casas}
+              clientes={clientes}
+              user={user}
+              loading={casasLoading}
+              onCreate={onCreateCasa}
+              onUpdate={onUpdateCasa}
+              onDelete={onDeleteCasa}
+              onUpdateStatus={onUpdateCasaStatus}
+              onCreateLocacao={onCreateCasaLocacao}
+              onSearchClientes={searchClientesSilently}
+              onRefresh={fetchCasas}
+            />
+          )}
+
           {view === "locacoes" && (
             <div className="list-page rentals-list-page">
               <header className="list-page-head">
@@ -1187,11 +1302,13 @@ export default function ImobiliariaApp() {
             view !== "lotes" &&
             view !== "vendas" &&
             view !== "clientes" &&
+            view !== "agenda" &&
             view !== "admin" &&
             view !== "settings" &&
             view !== "editor" &&
             view !== "predios" &&
             view !== "predio" &&
+            view !== "casas" &&
             view !== "locacoes" &&
             view !== "comercial" &&
             view !== "relatorios" &&
@@ -1571,7 +1688,23 @@ function LotsView({ loteamentos, loading, onOpenLoteamento, onStatusAction, onOp
   );
 }
 
-function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpenPredios, user }) {
+function saleDateKey(value) {
+  return String(value || '').match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || '';
+}
+
+function formatSaleDate(value) {
+  const key = saleDateKey(value);
+  if (!key) return '';
+  const [year, month, day] = key.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function SalesView({ loteamentos, predios = [], casas = [], loading, onOpenLoteamento, onOpenPredios, onOpenCasas, user }) {
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [clienteFiltro, setClienteFiltro] = useState("todos");
+  const [usuarioFiltro, setUsuarioFiltro] = useState("todos");
+  const [tipoFiltro, setTipoFiltro] = useState("todos");
   const lots = flattenLots(loteamentos);
   const isVendedor = user?.role === "vendedor";
 
@@ -1588,15 +1721,77 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
       )
     );
 
-  const totalLotes = soldLots.reduce((s, l) => s + (Number(l.preco) || 0), 0);
-  const totalAps = soldAps.reduce((s, a) => s + (Number(a.preco_venda) || 0), 0);
-  const total = totalLotes + totalAps;
-  const totalCount = soldLots.length + soldAps.length;
+  const soldCasas = casas
+    .filter((casa) => casa.status === "vendido" && (!isVendedor || casa.cliente_vinculado_por === user?.id))
+    .map((casa) => ({ ...casa }));
 
   const allSales = [
-    ...soldLots.map((lot) => ({ ...lot, _type: 'lote' })),
-    ...soldAps.map((ap) => ({ ...ap, _type: 'apartamento' })),
-  ].sort((a, b) => new Date(b.vendido_em || b.atualizado_em || 0) - new Date(a.vendido_em || a.atualizado_em || 0));
+    ...soldLots.map((lot) => ({
+      ...lot,
+      _type: 'lote',
+      _date: lot.vendido_em || lot.updated_at || lot.created_at,
+      _value: Number(lot.preco) || 0,
+      _clientId: lot.cliente?.id ?? lot.cliente_id ?? null,
+      _clientName: lot.cliente?.nome || 'Cliente não informado',
+      _userId: lot.cliente_vinculado_por_usuario?.id ?? lot.cliente_vinculado_por ?? null,
+      _userName: lot.cliente_vinculado_por_usuario?.nome || lot.cliente_vinculado_por_usuario?.login || (lot.cliente_vinculado_por ? `Usuário #${lot.cliente_vinculado_por}` : 'Não informado'),
+    })),
+    ...soldAps.map((ap) => ({
+      ...ap,
+      _type: 'apartamento',
+      _date: ap.vendido_em || ap.atualizado_em || ap.criado_em,
+      _value: Number(ap.preco_venda) || 0,
+      _clientId: ap.cliente?.id ?? ap.cliente_id ?? null,
+      _clientName: ap.cliente?.nome || 'Cliente não informado',
+      _userId: ap.vendedor?.id ?? ap.cliente_vinculado_por ?? null,
+      _userName: ap.vendedor?.nome || ap.vendedor?.login || (ap.cliente_vinculado_por ? `Usuário #${ap.cliente_vinculado_por}` : 'Não informado'),
+    })),
+    ...soldCasas.map((casa) => ({
+      ...casa,
+      _type: 'casa',
+      _date: casa.vendido_em || casa.atualizado_em || casa.criado_em,
+      _value: Number(casa.preco_venda) || 0,
+      _clientId: casa.cliente?.id ?? casa.cliente_id ?? null,
+      _clientName: casa.cliente?.nome || 'Cliente não informado',
+      _userId: casa.vendedor?.id ?? casa.cliente_vinculado_por ?? null,
+      _userName: casa.vendedor?.nome || casa.vendedor?.login || (casa.cliente_vinculado_por ? `Usuário #${casa.cliente_vinculado_por}` : 'Não informado'),
+    })),
+  ].sort((a, b) => new Date(b._date || 0) - new Date(a._date || 0));
+
+  const clientesOptions = [...new Map(allSales.map((sale) => [String(sale._clientId ?? 'sem_cliente'), sale._clientName])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  const usuariosOptions = [...new Map(allSales.map((sale) => [String(sale._userId ?? 'sem_usuario'), sale._userName])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+
+  const filteredSales = allSales.filter((sale) => {
+    if (tipoFiltro !== 'todos' && sale._type !== tipoFiltro) return false;
+
+    const saleDate = saleDateKey(sale._date);
+    if (dataInicio) {
+      if (!saleDate || saleDate < dataInicio) return false;
+    }
+    if (dataFim) {
+      if (!saleDate || saleDate > dataFim) return false;
+    }
+
+    if (clienteFiltro !== 'todos' && String(sale._clientId ?? 'sem_cliente') !== clienteFiltro) return false;
+    if (usuarioFiltro !== 'todos' && String(sale._userId ?? 'sem_usuario') !== usuarioFiltro) return false;
+    return true;
+  });
+
+  const filteredLots = filteredSales.filter((sale) => sale._type === 'lote');
+  const filteredAps = filteredSales.filter((sale) => sale._type === 'apartamento');
+  const filteredCasas = filteredSales.filter((sale) => sale._type === 'casa');
+  const total = filteredSales.reduce((s, sale) => s + sale._value, 0);
+  const totalCount = filteredSales.length;
+
+  const limparFiltros = () => {
+    setDataInicio("");
+    setDataFim("");
+    setClienteFiltro("todos");
+    setUsuarioFiltro("todos");
+    setTipoFiltro("todos");
+  };
 
   return (
     <section className="list-page">
@@ -1606,16 +1801,63 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
           <h1 className="list-page-title">{isVendedor ? "Minhas vendas" : "Vendas realizadas"}</h1>
           <p className="dash-sub">
             {totalCount} {totalCount === 1 ? "venda" : "vendas"}{isVendedor ? " realizadas por você" : " registradas"}
-            {soldLots.length > 0 && soldAps.length > 0 && ` (${soldLots.length} lotes · ${soldAps.length} aptos)`}
+            {(filteredLots.length > 0 || filteredAps.length > 0 || filteredCasas.length > 0) && ` (${filteredLots.length} lotes · ${filteredAps.length} aptos · ${filteredCasas.length} casas)`}
             {" · "}{fmtBRLShort(total)} em total vendido.
           </p>
         </div>
       </header>
 
+      <div className="rental-table-card" style={{ marginBottom: 18 }}>
+        <div style={{ padding: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(145px, 1fr))', gap: 12, alignItems: 'end' }}>
+            <label className="field-label">
+              Data inicial
+              <input className="field-input" type="date" value={dataInicio} onChange={(event) => setDataInicio(event.target.value)} />
+            </label>
+            <label className="field-label">
+              Data final
+              <input className="field-input" type="date" value={dataFim} min={dataInicio || undefined} onChange={(event) => setDataFim(event.target.value)} />
+            </label>
+            <label className="field-label">
+              Cliente
+              <select className="field-input" value={clienteFiltro} onChange={(event) => setClienteFiltro(event.target.value)}>
+                <option value="todos">Todos os clientes</option>
+                {clientesOptions.map(([id, label]) => (
+                  <option key={id} value={id}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-label">
+              Usuário
+              <select className="field-input" value={usuarioFiltro} onChange={(event) => setUsuarioFiltro(event.target.value)}>
+                <option value="todos">Todos os usuários</option>
+                {usuariosOptions.map(([id, label]) => (
+                  <option key={id} value={id}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-label">
+              Tipo
+              <select className="field-input" value={tipoFiltro} onChange={(event) => setTipoFiltro(event.target.value)}>
+                <option value="todos">Todos os tipos</option>
+                <option value="apartamento">Apartamento</option>
+                <option value="casa">Casa</option>
+                <option value="lote">Lote</option>
+              </select>
+            </label>
+            <button className="table-action table-action-ghost" type="button" onClick={limparFiltros}>
+              Limpar filtros
+            </button>
+          </div>
+        </div>
+      </div>
+
       {loading ? (
         <div className="list-empty">Carregando vendas...</div>
-      ) : totalCount === 0 ? (
+      ) : allSales.length === 0 ? (
         <div className="list-empty">Nenhuma venda registrada.</div>
+      ) : totalCount === 0 ? (
+        <div className="list-empty">Nenhuma venda encontrada com os filtros selecionados.</div>
       ) : (
         <div className="lot-table-wrap">
           <table className="lot-table">
@@ -1628,11 +1870,12 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
                 <th>Valor</th>
                 <th>Data da venda</th>
                 <th>Cliente</th>
+                <th>Responsável</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {allSales.map((item) =>
+              {filteredSales.map((item) =>
                 item._type === 'lote' ? (
                   <tr key={`lote-${item.db_id || item.id}`}>
                     <td><span className="status-pill" style={{ color: '#3288e0', background: 'rgba(50,136,224,.12)' }}>Lote</span></td>
@@ -1645,7 +1888,7 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
                     </td>
                     <td>{item.area ? `${item.area} m²` : '—'}</td>
                     <td>{fmtBRL(item.preco)}</td>
-                    <td>{item.vendido_em ? new Date(item.vendido_em).toLocaleDateString('pt-BR') : <span style={{ color: '#aaa' }}>—</span>}</td>
+                    <td>{item._date ? formatSaleDate(item._date) : <span style={{ color: '#aaa' }}>—</span>}</td>
                     <td>
                       {item.cliente ? (
                         <>
@@ -1654,8 +1897,33 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
                         </>
                       ) : '—'}
                     </td>
+                    <td>{item._userName}</td>
                     <td>
                       <button className="table-action table-action-ghost" onClick={() => onOpenLoteamento?.(item.loteamentoId)}>Loteamento</button>
+                    </td>
+                  </tr>
+                ) : item._type === 'casa' ? (
+                  <tr key={`casa-${item.id}`}>
+                    <td><span className="status-pill" style={{ color: '#16a34a', background: 'rgba(22,163,74,.12)' }}>Casa</span></td>
+                    <td><b className="lot-code">{item.codigo || item.nome}</b></td>
+                    <td>
+                      <span>{item.nome}</span>
+                      <div className="table-sub">{[item.cidade, item.estado].filter(Boolean).join('/') || '—'}</div>
+                    </td>
+                    <td>{item.area > 0 ? `${item.area} m²` : '—'}</td>
+                    <td>{fmtBRL(item.preco_venda)}</td>
+                    <td>{item._date ? formatSaleDate(item._date) : <span style={{ color: '#aaa' }}>—</span>}</td>
+                    <td>
+                      {item.cliente ? (
+                        <>
+                          <b>{item.cliente.nome}</b>
+                          <div className="table-sub">{formatCpfCnpj(item.cliente.cpf_cnpj)}</div>
+                        </>
+                      ) : '—'}
+                    </td>
+                    <td>{item._userName}</td>
+                    <td>
+                      <button className="table-action table-action-ghost" onClick={() => onOpenCasas?.()}>Casas</button>
                     </td>
                   </tr>
                 ) : (
@@ -1670,7 +1938,7 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
                     </td>
                     <td>{item.area > 0 ? `${item.area} m²` : '—'}</td>
                     <td>{fmtBRL(item.preco_venda)}</td>
-                    <td>{item.vendido_em ? new Date(item.vendido_em).toLocaleDateString('pt-BR') : <span style={{ color: '#aaa' }}>—</span>}</td>
+                    <td>{item._date ? formatSaleDate(item._date) : <span style={{ color: '#aaa' }}>—</span>}</td>
                     <td>
                       {item.cliente ? (
                         <>
@@ -1679,6 +1947,7 @@ function SalesView({ loteamentos, predios = [], loading, onOpenLoteamento, onOpe
                         </>
                       ) : '—'}
                     </td>
+                    <td>{item._userName}</td>
                     <td>
                       <button className="table-action table-action-ghost" onClick={() => onOpenPredios?.()}>Prédio</button>
                     </td>

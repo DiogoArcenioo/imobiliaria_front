@@ -117,7 +117,7 @@ export function ClienteManagement({
     const celular = onlyDigits(form.celular);
 
     if (!form.nome.trim()) next.nome = "Nome obrigatorio";
-    if (![11, 14].includes(doc.length)) next.cpf_cnpj = "Informe CPF ou CNPJ valido";
+    if (doc && ![11, 14].includes(doc.length)) next.cpf_cnpj = "Informe CPF ou CNPJ valido";
     if (celular.length < 10) next.celular = "Informe o celular";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) next.email = "E-mail invalido";
 
@@ -134,8 +134,9 @@ export function ClienteManagement({
     try {
       const payload = {
         ...form,
-        cpf_cnpj: onlyDigits(form.cpf_cnpj),
+        cpf_cnpj: onlyDigits(form.cpf_cnpj) || undefined,
         celular: onlyDigits(form.celular),
+        email: form.email.trim() || undefined,
         telefone: onlyDigits(form.telefone) || undefined,
         cep: onlyDigits(form.cep) || undefined,
         renda_mensal: moneyToNumber(form.renda_mensal),
@@ -177,12 +178,12 @@ export function ClienteManagement({
           <div className="cliente-form-head">
             <div>
               <h2>Novo cliente</h2>
-              <p>Nome, CPF/CNPJ e celular sao obrigatorios.</p>
+              <p>Nome e celular sao obrigatorios. CPF/CNPJ e opcional.</p>
             </div>
           </div>
 
           <div className="cliente-form-grid">
-            <Field label="Nome / Razao social" error={errors.nome} span>
+            <Field label="Nome / Razao social *" error={errors.nome} span>
               <input value={form.nome} onChange={(e) => setField("nome", e.target.value)} maxLength={200} />
             </Field>
             <Field label="Tipo">
@@ -191,10 +192,10 @@ export function ClienteManagement({
                 <option value="pessoa_juridica">Pessoa juridica</option>
               </select>
             </Field>
-            <Field label="CPF/CNPJ" error={errors.cpf_cnpj}>
+            <Field label="CPF/CNPJ (opcional)" error={errors.cpf_cnpj}>
               <input value={form.cpf_cnpj} onChange={(e) => setField("cpf_cnpj", formatCpfCnpj(e.target.value))} />
             </Field>
-            <Field label="Celular" error={errors.celular}>
+            <Field label="Celular *" error={errors.celular}>
               <input value={form.celular} onChange={(e) => setField("celular", formatPhone(e.target.value))} />
             </Field>
             <Field label="Telefone">

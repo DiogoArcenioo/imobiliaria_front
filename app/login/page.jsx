@@ -1,54 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { forgotPassword } from '../../lib/api';
-
-// ── Estilos inline reutilizáveis ──────────────────────────────────────────────
-
-const S = {
-  input: {
-    width: '100%',
-    padding: '0.625rem 0.875rem',
-    background: '#f0f4f9',
-    border: '1px solid #ccd5e0',
-    borderRadius: 8,
-    color: '#0d1b3e',
-    fontSize: '0.9375rem',
-    outline: 'none',
-    boxSizing: 'border-box',
-  },
-  label: {
-    display: 'block',
-    color: '#5a7898',
-    fontSize: '0.8125rem',
-    marginBottom: 6,
-  },
-  error: {
-    background: '#fff0f0',
-    border: '1px solid #fca5a5',
-    borderRadius: 8,
-    padding: '0.625rem 0.875rem',
-    color: '#dc2626',
-    fontSize: '0.875rem',
-    marginBottom: '1rem',
-  },
-  success: {
-    background: '#f0fdf4',
-    border: '1px solid #86efac',
-    borderRadius: 8,
-    padding: '0.625rem 0.875rem',
-    color: '#15803d',
-    fontSize: '0.875rem',
-    marginBottom: '1rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-};
-
-// ── Modal de esqueceu a senha ─────────────────────────────────────────────────
 
 function ForgotPasswordModal({ onClose }) {
   const [email, setEmail] = useState('');
@@ -59,174 +14,79 @@ function ForgotPasswordModal({ onClose }) {
 
   useEffect(() => {
     inputRef.current?.focus();
-    // Fecha com ESC
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (event) => event.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!email.trim()) { setError('Informe seu e-mail.'); return; }
+  async function handleSubmit(event) {
+    event.preventDefault();
     setError('');
     setLoading(true);
     try {
       await forgotPassword(email.trim().toLowerCase());
       setSent(true);
     } catch (err) {
-      setError(err.message || 'Erro ao enviar. Tente novamente.');
+      setError(err.message || 'Nao foi possivel enviar o link.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    /* overlay */
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(13, 27, 62, 0.55)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '1rem',
-        backdropFilter: 'blur(2px)',
-      }}
-    >
-      <div style={{
-        width: '100%', maxWidth: 400,
-        background: '#fff',
-        borderRadius: 16,
-        border: '1px solid #ccd5e0',
-        boxShadow: '0 25px 50px rgba(0,30,80,0.18)',
-        padding: '2rem',
-      }}>
-        {/* cabeçalho */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-          <h2 style={{ margin: 0, color: '#0d1b3e', fontSize: '1.125rem', fontWeight: 700 }}>
-            Recuperar senha
-          </h2>
-          <button
-            onClick={onClose}
-            aria-label="Fechar"
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: '#5a7898', fontSize: 20, lineHeight: 1, padding: 4,
-            }}
-          >
-            ✕
-          </button>
-        </div>
-
+    <div className="login-modal-wrap" role="dialog" aria-modal="true">
+      <button className="login-modal-backdrop" onClick={onClose} aria-label="Fechar" />
+      <section className="login-modal">
+        <button className="login-icon-btn login-close" onClick={onClose} aria-label="Fechar">
+          <CloseIcon />
+        </button>
         {sent ? (
-          /* estado de sucesso */
-          <div>
-            <div style={{
-              textAlign: 'center',
-              background: '#f0fdf4',
-              border: '1px solid #86efac',
-              borderRadius: 12,
-              padding: '1.5rem',
-              marginBottom: '1.25rem',
-            }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>📬</div>
-              <p style={{ margin: 0, color: '#15803d', fontWeight: 600, fontSize: '0.9375rem' }}>
-                Verifique seu e-mail
-              </p>
-              <p style={{ margin: '0.5rem 0 0', color: '#166534', fontSize: '0.875rem', lineHeight: 1.5 }}>
-                Se este endereço estiver cadastrado, você receberá um link de redefinição válido por <strong>1 hora</strong>.
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              style={{
-                width: '100%', padding: '0.75rem',
-                background: '#3288e0', color: '#fff',
-                border: 'none', borderRadius: 8,
-                fontSize: '0.9375rem', fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Entendido
-            </button>
+          <div className="login-modal-body">
+            <span className="login-kicker">RECUPERACAO</span>
+            <h2>Verifique seu e-mail</h2>
+            <p>Se o endereco estiver cadastrado, voce recebera um link para criar uma nova senha.</p>
+            <button className="login-btn login-btn-primary" onClick={onClose}>Entendido</button>
           </div>
         ) : (
-          /* formulário */
-          <form onSubmit={handleSubmit}>
-            <p style={{ margin: '0 0 1.25rem', color: '#5a7898', fontSize: '0.875rem', lineHeight: 1.55 }}>
-              Digite o e-mail vinculado à sua conta. Enviaremos um link para criar uma nova senha.
-            </p>
-
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={S.label}>E-mail</label>
-              <input
-                ref={inputRef}
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                placeholder="seu@email.com"
-                required
-                style={S.input}
-              />
-            </div>
-
-            {error && <div style={S.error}>{error}</div>}
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  flex: 1, padding: '0.75rem',
-                  background: '#f0f4f9', color: '#5a7898',
-                  border: '1px solid #ccd5e0', borderRadius: 8,
-                  fontSize: '0.9375rem', fontWeight: 600, cursor: 'pointer',
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  flex: 2, padding: '0.75rem',
-                  background: loading ? '#1a5fa8' : '#3288e0',
-                  color: '#fff', border: 'none', borderRadius: 8,
-                  fontSize: '0.9375rem', fontWeight: 600,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  opacity: loading ? 0.8 : 1,
-                }}
-              >
+          <form className="login-modal-body" onSubmit={handleSubmit}>
+            <span className="login-kicker">RECUPERACAO</span>
+            <h2>Redefinir senha</h2>
+            <p>Digite o e-mail vinculado a sua conta para receber um link de redefinicao.</p>
+            <label>
+              <span>E-mail</span>
+              <input ref={inputRef} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="seu@email.com" />
+            </label>
+            {error && <div className="login-error">{error}</div>}
+            <div className="login-modal-actions">
+              <button type="button" className="login-btn login-btn-light" onClick={onClose}>Cancelar</button>
+              <button className="login-btn login-btn-primary" disabled={loading}>
                 {loading ? 'Enviando...' : 'Enviar link'}
               </button>
             </div>
           </form>
         )}
-      </div>
+      </section>
     </div>
   );
 }
-
-// ── Página de login ───────────────────────────────────────────────────────────
 
 function LoginContent() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const resetSuccess = searchParams.get('reset') === 'success';
 
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
 
-  // Mensagem de sucesso vinda da página de redefinição
-  const resetSuccess = searchParams.get('reset') === 'success';
-
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit(event) {
+    event.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       if (mode === 'login') {
         await login(email, password);
@@ -237,197 +97,411 @@ function LoginContent() {
           body: JSON.stringify({ email, password }),
         });
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message ?? 'Erro ao criar conta');
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || 'Erro ao criar conta');
         }
         await login(email, password);
       }
       router.replace('/app');
     } catch (err) {
-      setError(err.message ?? 'Erro desconhecido');
+      setError(err.message || 'Erro desconhecido');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#f0f4f9',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'system-ui, sans-serif',
-    }}>
+    <main className="login-page">
+      <style>{LOGIN_CSS}</style>
       {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} />}
-
-      <div style={{
-        width: '100%',
-        maxWidth: 380,
-        padding: '2.5rem',
-        background: '#ffffff',
-        borderRadius: 16,
-        border: '1px solid #ccd5e0',
-        boxShadow: '0 25px 50px rgba(0, 30, 80, 0.14)',
-      }}>
-        {/* Logo / título */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{
-            width: 48, height: 48,
-            background: '#3288e0',
-            borderRadius: 12,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 1rem',
-            fontSize: 24,
-            color: '#fff',
-          }}>
-            T
+      <section className="login-shell">
+        <aside className="login-product">
+          <a href="/" className="login-logo" aria-label="Norte">
+            <img src="/logo2.png" alt="Norte" />
+          </a>
+          <div>
+            <span className="login-kicker">SISTEMA NORTE</span>
+            <h1>Gestao imobiliaria com cara de produto SaaS e rotina de operacao.</h1>
+            <p>Entre para acessar dashboard, mapas, clientes, vendas, predios, locacoes e relatorios.</p>
           </div>
-          <h1 style={{ color: '#0d1b3e', fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>
-            Terreno
-          </h1>
-          <p style={{ color: '#5a7898', fontSize: '0.875rem', margin: '0.25rem 0 0' }}>
-            Loteamentos e lotes
-          </p>
-        </div>
+          <ProductPreview />
+        </aside>
 
-        {/* Mensagem de sucesso pós-redefinição */}
-        {resetSuccess && (
-          <div style={S.success}>
-            <span style={{ fontSize: 16 }}>✓</span>
-            Senha redefinida com sucesso! Faça login com a nova senha.
-          </div>
-        )}
-
-        {/* Tabs login / registro */}
-        <div style={{
-          display: 'flex',
-          background: '#e8edf4',
-          borderRadius: 8,
-          padding: 4,
-          marginBottom: '1.5rem',
-        }}>
-          {['login', 'register'].map((m) => (
-            <button
-              key={m}
-              onClick={() => { setMode(m); setError(''); }}
-              style={{
-                flex: 1,
-                padding: '0.5rem',
-                borderRadius: 6,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: 500,
-                transition: 'all 0.15s',
-                background: mode === m ? '#3288e0' : 'transparent',
-                color: mode === m ? '#fff' : '#5a7898',
-              }}
-            >
-              {m === 'login' ? 'Entrar' : 'Criar conta'}
-            </button>
-          ))}
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={S.label}>E-mail</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              placeholder="seu@email.com"
-              style={S.input}
-            />
+        <section className="login-card">
+          <div className="login-card-head">
+            <span className="login-kicker">{mode === 'login' ? 'ACESSO' : 'NOVA CONTA'}</span>
+            <h2>{mode === 'login' ? 'Entrar no sistema' : 'Criar conta'}</h2>
+            <p>{mode === 'login' ? 'Use seu e-mail ou login cadastrado.' : 'Crie o primeiro acesso e conclua o cadastro da empresa.'}</p>
           </div>
 
-          <div style={{ marginBottom: mode === 'login' ? '0.5rem' : '1.5rem' }}>
-            <label style={S.label}>Senha</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              placeholder={mode === 'register' ? 'Mínimo 8 caracteres' : '••••••••'}
-              minLength={mode === 'register' ? 8 : 6}
-              style={S.input}
-            />
-          </div>
-
-          {/* Link "Esqueceu a senha?" — só no modo login */}
-          {mode === 'login' && (
-            <div style={{ textAlign: 'right', marginBottom: '1.25rem' }}>
-              <button
-                type="button"
-                onClick={() => setShowForgot(true)}
-                style={{
-                  background: 'none', border: 'none', padding: 0,
-                  color: '#3288e0', fontSize: '0.8125rem', fontWeight: 500,
-                  cursor: 'pointer', textDecoration: 'none',
-                }}
-              >
-                Esqueceu a senha?
-              </button>
-            </div>
+          {resetSuccess && (
+            <div className="login-success">Senha redefinida com sucesso. Faca login com a nova senha.</div>
           )}
 
-          {error && <div style={S.error}>{error}</div>}
+          <div className="login-tabs" role="tablist" aria-label="Modo de acesso">
+            <button className={mode === 'login' ? 'is-active' : ''} onClick={() => { setMode('login'); setError(''); }}>Entrar</button>
+            <button className={mode === 'register' ? 'is-active' : ''} onClick={() => { setMode('register'); setError(''); }}>Criar conta</button>
+          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              background: loading ? '#1a5fa8' : '#3288e0',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              fontSize: '0.9375rem',
-              fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.8 : 1,
-              transition: 'all 0.15s',
-            }}
-          >
-            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
-          </button>
-        </form>
+          <form className="login-form" onSubmit={handleSubmit}>
+            <label>
+              <span>E-mail ou login</span>
+              <input
+                type={mode === 'login' ? 'text' : 'email'}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete={mode === 'login' ? 'username' : 'email'}
+                placeholder="seu@email.com"
+              />
+            </label>
+            <label>
+              <span>Senha</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={mode === 'register' ? 8 : 6}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                placeholder={mode === 'register' ? 'Minimo 8 caracteres' : 'Sua senha'}
+              />
+            </label>
 
-        <div style={{
-          marginTop: '1.5rem',
-          paddingTop: '1.25rem',
-          borderTop: '1px solid #e8edf4',
-          textAlign: 'center',
-        }}>
-          <p style={{ margin: 0, fontSize: 13, color: '#5a7898' }}>
-            Primeira vez aqui?{' '}
-            <a href="/cadastro" style={{ color: '#3288e0', fontWeight: 700, textDecoration: 'none' }}>
-              Cadastrar empresa
-            </a>
-          </p>
-        </div>
+            {mode === 'login' && (
+              <button type="button" className="login-link-btn" onClick={() => setShowForgot(true)}>
+                Esqueceu a senha?
+              </button>
+            )}
+
+            {error && <div className="login-error">{error}</div>}
+
+            <button className="login-btn login-btn-primary login-btn-full" disabled={loading}>
+              {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+            </button>
+          </form>
+
+          <div className="login-card-foot">
+            <a href="/">Voltar para a pagina inicial</a>
+            <a href="/cadastro">Cadastrar empresa completa</a>
+          </div>
+        </section>
+      </section>
+    </main>
+  );
+}
+
+function ProductPreview() {
+  return (
+    <div className="login-preview">
+      <div className="login-preview-top">
+        <strong>Dashboard</strong>
+        <span>ao vivo</span>
+      </div>
+      <div className="login-preview-metrics">
+        <Metric label="Vendas" value="R$ 842 mil" />
+        <Metric label="Lotes" value="128" />
+        <Metric label="Locacoes" value="36" />
+      </div>
+      <div className="login-preview-map">
+        <svg viewBox="0 0 420 150" aria-hidden="true">
+          <defs>
+            <pattern id="login-map-bg" width="80" height="80" patternUnits="userSpaceOnUse">
+              <image href="/textures/fundo.jpg" width="80" height="80" />
+            </pattern>
+          </defs>
+          <rect width="420" height="150" fill="url(#login-map-bg)" />
+          <path d="M20 110 C96 86 151 128 222 88 S330 58 398 88" fill="none" stroke="#3f4448" strokeWidth="28" strokeLinecap="round" />
+          {[
+            ['62,22 134,22 134,67 62,67', '#22c55e'],
+            ['144,22 216,22 216,67 144,67', '#ef4444'],
+            ['226,22 298,22 298,67 226,67', '#f59e0b'],
+            ['308,22 380,22 380,67 308,67', '#22c55e'],
+          ].map(([points, color]) => (
+            <polygon key={points} points={points} fill={color} fillOpacity=".72" stroke="rgba(0,0,0,.28)" />
+          ))}
+        </svg>
       </div>
     </div>
   );
 }
 
+function Metric({ label, value }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div style={{
-        minHeight: '100vh', display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
-        background: '#f0f4f9', fontFamily: 'system-ui, sans-serif',
-        color: '#5a7898',
-      }}>
-        Carregando...
-      </div>
-    }>
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>Carregando...</div>}>
       <LoginContent />
     </Suspense>
   );
 }
+
+const LOGIN_CSS = `
+  .login-page {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 28px;
+    background:
+      linear-gradient(115deg, rgba(9,17,32,.92), rgba(9,17,32,.48)),
+      url('/textures/terreno.jpeg') center/cover;
+    color: #101828;
+    font-family: 'Manrope', system-ui, sans-serif;
+    overflow: auto;
+  }
+  .login-page * { box-sizing: border-box; }
+  .login-shell {
+    width: min(1080px, 100%);
+    min-height: 660px;
+    display: grid;
+    grid-template-columns: 1.06fr .94fr;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 34px 90px rgba(0,0,0,.34);
+  }
+  .login-product {
+    padding: 34px;
+    background:
+      linear-gradient(160deg, rgba(9,17,32,.96), rgba(16,24,40,.82)),
+      url('/textures/fundo.jpg') center/cover;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 34px;
+  }
+  .login-logo { display: inline-flex; width: fit-content; }
+  .login-logo img { height: 40px; width: auto; display: block; }
+  .login-kicker {
+    display: inline-flex;
+    color: #3288e0;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .login-product h1 {
+    max-width: 560px;
+    margin: 14px 0 14px;
+    font-size: clamp(34px, 4vw, 52px);
+    line-height: 1.02;
+    letter-spacing: 0;
+  }
+  .login-product p, .login-card-head p, .login-modal p {
+    margin: 0;
+    color: #667085;
+    line-height: 1.65;
+  }
+  .login-product p { color: rgba(255,255,255,.68); max-width: 520px; }
+  .login-preview {
+    background: rgba(255,255,255,.94);
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 8px;
+    padding: 16px;
+    color: #101828;
+  }
+  .login-preview-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .login-preview-top span {
+    background: #ecfdf3;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 900;
+  }
+  .login-preview-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .login-preview-metrics div {
+    background: #f9fafb;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+    padding: 11px;
+  }
+  .login-preview-metrics span { color: #667085; font-size: 11px; font-weight: 800; display: block; }
+  .login-preview-metrics strong { display: block; margin-top: 5px; font-size: 16px; }
+  .login-preview-map svg {
+    width: 100%;
+    display: block;
+    border-radius: 7px;
+    border: 1px solid #e4e7ec;
+  }
+  .login-card {
+    padding: 54px 48px 36px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 18px;
+  }
+  .login-card-head h2, .login-modal h2 {
+    margin: 10px 0 8px;
+    font-size: 32px;
+    line-height: 1.08;
+    letter-spacing: 0;
+  }
+  .login-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    background: #f2f4f7;
+    border: 1px solid #e4e7ec;
+    padding: 4px;
+    border-radius: 8px;
+  }
+  .login-tabs button {
+    height: 38px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #667085;
+    font-weight: 900;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .login-tabs .is-active {
+    background: #fff;
+    color: #101828;
+    box-shadow: 0 1px 2px rgba(16,24,40,.08);
+  }
+  .login-form { display: flex; flex-direction: column; gap: 14px; }
+  .login-form label, .login-modal label {
+    display: grid;
+    gap: 7px;
+    color: #344054;
+    font-size: 13px;
+    font-weight: 900;
+  }
+  .login-form input, .login-modal input {
+    height: 44px;
+    width: 100%;
+    border: 1px solid #d0d5dd;
+    border-radius: 8px;
+    padding: 0 12px;
+    outline: none;
+    font: inherit;
+  }
+  .login-form input:focus, .login-modal input:focus {
+    border-color: #3288e0;
+    box-shadow: 0 0 0 3px rgba(50,136,224,.14);
+  }
+  .login-link-btn {
+    align-self: flex-end;
+    border: 0;
+    background: transparent;
+    color: #3288e0;
+    padding: 0;
+    cursor: pointer;
+    font-weight: 900;
+    font-family: inherit;
+  }
+  .login-btn {
+    min-height: 44px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    padding: 10px 16px;
+    font: inherit;
+    font-weight: 900;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .login-btn:disabled { cursor: wait; opacity: .7; }
+  .login-btn-primary { background: #3288e0; color: #fff; box-shadow: 0 12px 28px rgba(50,136,224,.22); }
+  .login-btn-primary:hover { background: #2579ce; }
+  .login-btn-light { background: #fff; color: #344054; border-color: #d0d5dd; }
+  .login-btn-full { width: 100%; }
+  .login-error, .login-success {
+    border-radius: 8px;
+    padding: 11px 12px;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .login-error { color: #b42318; background: #fff8f6; border: 1px solid #fecdca; }
+  .login-success { color: #067647; background: #ecfdf3; border: 1px solid #abefc6; }
+  .login-card-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 16px;
+    border-top: 1px solid #e4e7ec;
+  }
+  .login-card-foot a {
+    color: #3288e0;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 900;
+  }
+  .login-modal-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+  }
+  .login-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(9,17,32,.72);
+    backdrop-filter: blur(14px);
+    cursor: pointer;
+  }
+  .login-modal {
+    position: relative;
+    z-index: 1;
+    width: min(440px, 100%);
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 34px 90px rgba(0,0,0,.34);
+  }
+  .login-modal-body { padding: 36px; display: grid; gap: 16px; }
+  .login-modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .login-icon-btn {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #e4e7ec;
+    background: #fff;
+    color: #475467;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .login-close { position: absolute; right: 12px; top: 12px; }
+  @media (max-width: 900px) {
+    .login-page { padding: 0; place-items: stretch; }
+    .login-shell { min-height: 100vh; width: 100%; border-radius: 0; grid-template-columns: 1fr; }
+    .login-product { display: none; }
+    .login-card { padding: 42px 24px; }
+  }
+  @media (max-width: 520px) {
+    .login-card-foot, .login-modal-actions { flex-direction: column; }
+    .login-preview-metrics { grid-template-columns: 1fr; }
+  }
+`;

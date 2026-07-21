@@ -193,8 +193,7 @@ export function UserManagement({
     return Object.keys(nextErrors).length === 0;
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function saveUserForm() {
     if (!validate()) return;
 
     setSaving(true);
@@ -237,9 +236,22 @@ export function UserManagement({
     }
   }
 
+  async function handleSubmit(event) {
+    event.preventDefault();
+    await saveUserForm();
+  }
+
   function goToAccessStep() {
     if (!validate()) return;
     setFormStep("access");
+  }
+
+  async function handleEditPrimaryAction() {
+    if (form.role === "vendedor") {
+      goToAccessStep();
+      return;
+    }
+    await saveUserForm();
   }
 
   async function handleToggleAtivo(user) {
@@ -503,8 +515,15 @@ export function UserManagement({
       </div>
 
       {editingUser && (
-        <div className="user-edit-backdrop" onClick={cancelEdit}>
-          <form className="user-edit-modal" onSubmit={handleSubmit} onClick={(event) => event.stopPropagation()}>
+        <div className="user-edit-backdrop">
+          <div
+            className="user-edit-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
             <div className="user-edit-head">
               <div>
                 <div className="dash-eyebrow">EDITAR USUARIO</div>
@@ -516,7 +535,7 @@ export function UserManagement({
               </button>
             </div>
 
-            <UserFormSteps step={formStep} />
+            {form.role === "vendedor" && <UserFormSteps step={formStep} />}
 
             {formStep === "info" ? (
               <>
@@ -531,8 +550,15 @@ export function UserManagement({
                 {apiError && <div className="form-alert">{apiError}</div>}
                 <div className="user-form-actions">
                   <button className="sec-tool-btn" type="button" onClick={cancelEdit}>Cancelar</button>
-                  <button className="qa-btn qa-btn-primary" type="button" onClick={goToAccessStep}>
-                    Continuar
+                  <button
+                    className="qa-btn qa-btn-primary"
+                    type="button"
+                    onClick={handleEditPrimaryAction}
+                    disabled={saving || !canWrite}
+                  >
+                    {form.role === "vendedor"
+                      ? "Continuar"
+                      : saving ? "Salvando..." : "Salvar alteracoes"}
                   </button>
                 </div>
               </>
@@ -550,13 +576,18 @@ export function UserManagement({
                 {apiError && <div className="form-alert">{apiError}</div>}
                 <div className="user-form-actions">
                   <button className="sec-tool-btn" type="button" onClick={() => setFormStep("info")}>Voltar</button>
-                  <button className="qa-btn qa-btn-primary" type="submit" disabled={saving || !canWrite}>
+                  <button
+                    className="qa-btn qa-btn-primary"
+                    type="button"
+                    onClick={saveUserForm}
+                    disabled={saving || !canWrite}
+                  >
                     {saving ? "Salvando..." : "Salvar alteracoes"}
                   </button>
                 </div>
               </>
             )}
-          </form>
+          </div>
         </div>
       )}
     </section>

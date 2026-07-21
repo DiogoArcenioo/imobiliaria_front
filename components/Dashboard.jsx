@@ -1,8 +1,8 @@
 ﻿'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fmtBRL, fmtBRLShort, statusLabel } from '../lib/data';
-import { computeMetrics, flattenLots } from '../lib/api';
+import { computeMetrics, flattenLots, getAgendaItems } from '../lib/api';
 import { userHasModule } from '../lib/modules';
 import { STATUS_COLORS } from './MapView';
 
@@ -29,7 +29,49 @@ export const Dashboard = ({
   const canSeeLotes = !isVendedor || userHasModule(user, 'lotes') || canSeeLoteamentos;
   const canSeePredios = !isVendedor || userHasModule(user, 'predios');
   const canSeeLocacoes = !isVendedor || userHasModule(user, 'locacoes');
+  const canSeeAgenda = !isVendedor || userHasModule(user, 'agenda');
   const [showInativos, setShowInativos] = useState(false);
+  const [agendaItems, setAgendaItems] = useState([]);
+  const [agendaLoading, setAgendaLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user || !canSeeAgenda || (user.role === 'admin' && !selectedEmpresa)) {
+      setAgendaItems([]);
+      return;
+    }
+
+    let alive = true;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const future = new Date(now);
+    future.setDate(future.getDate() + 90);
+
+    setAgendaLoading(true);
+    getAgendaItems({
+      inicio: todayStart.toISOString(),
+      fim: future.toISOString(),
+      escopo: 'minha',
+    })
+      .then((items) => {
+        if (!alive) return;
+        const next = (Array.isArray(items) ? items : [])
+          .filter((item) => {
+            const end = item.data_fim ? new Date(item.data_fim) : new Date(item.data_inicio);
+            return end >= now && item.status !== 'cancelado';
+          })
+          .sort((a, b) => new Date(a.data_inicio || 0) - new Date(b.data_inicio || 0))
+          .slice(0, 7);
+        setAgendaItems(next);
+      })
+      .catch(() => {
+        if (alive) setAgendaItems([]);
+      })
+      .finally(() => {
+        if (alive) setAgendaLoading(false);
+      });
+
+    return () => { alive = false; };
+  }, [user, canSeeAgenda, selectedEmpresa]);
 
   const activeLoteamentos = loteamentos.filter((lt) => lt.ativo !== false);
   const displayedLoteamentos = (isGerente && showInativos) ? loteamentos : activeLoteamentos;
@@ -145,6 +187,10 @@ export const Dashboard = ({
           </div>
         )}
       </header>
+
+      {canSeeAgenda && (
+        <AgendaPreviewCard items={agendaItems} loading={agendaLoading} />
+      )}
 
       {/* ── Stats strip ─────────────────────────────────────────── */}
       <div className="db-stats-strip">
@@ -357,6 +403,220 @@ function StatChip({ label, value, sub, accent }) {
       <div className="db-stat-label">{label}</div>
       <div className="db-stat-value" style={accent ? { color: 'var(--accent)' } : undefined}>{value}</div>
       <div className="db-stat-sub">{sub}</div>
+    </div>
+  );
+}
+
+function AgendaPreviewCard({ items, loading }) {
+  const [openItem, setOpenItem] = useState(null);
+  const next = items[0] || null;
+  const rest = items.slice(1);
+
+  const typeColor = {
+    tarefa: '#3288e0',
+    visita: '#16a34a',
+    atendimento: '#8b5cf6',
+  };
+
+  const typeLabel = {
+    tarefa: 'Tarefa',
+    visita: 'Visita',
+    atendimento: 'Atendimento',
+  };
+
+  const whenLabel = (value) => {
+    if (!value) return 'Sem horario';
+    const date = new Date(value);
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    const sameDay = (a, b) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    const day = sameDay(date, today)
+      ? 'Hoje'
+      : sameDay(date, tomorrow)
+      ? 'Amanha'
+      : date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    return `${day}, ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  };
+
+  return (
+    <section
+      className="db-sales-card"
+      style={{
+        marginBottom: 18,
+        background: 'linear-gradient(90deg, #eef7ff 0%, #f7fbff 68%, #ffffff 100%)',
+        borderColor: '#bfdbfe',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        className="db-sales-head"
+        style={{
+          padding: '14px 26px 12px',
+          minHeight: 0,
+          borderBottom: '1px solid #dbeafe',
+          background: 'rgba(255,255,255,.42)',
+        }}
+      >
+        <div>
+          <div className="dash-eyebrow" style={{ marginBottom: 2 }}>AGENDA</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+            {items.length} próximo{items.length === 1 ? '' : 's'} evento{items.length === 1 ? '' : 's'}
+          </div>
+        </div>
+        <div className="db-sales-vgv">
+          <span>Próximos</span>
+          <strong>{items.length}</strong>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '18px 26px', color: 'var(--text-muted)' }}>
+          Carregando agenda...
+        </div>
+      ) : !next ? (
+        <div style={{ padding: '18px 26px', color: 'var(--text-muted)' }}>
+          Nenhum compromisso futuro cadastrado.
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: rest.length > 0 ? 'minmax(0, 1.4fr) minmax(260px, .9fr)' : '1fr',
+            alignItems: 'stretch',
+          }}
+        >
+          <div style={{ padding: '16px 26px', minWidth: 0 }}>
+            <div className="dash-eyebrow" style={{ marginBottom: 8 }}>PRÓXIMO EVENTO</div>
+            <button
+              type="button"
+              onClick={() => setOpenItem(next)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                minWidth: 0,
+                width: '100%',
+                border: 0,
+                background: 'transparent',
+                padding: 0,
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                className="status-pill"
+                style={{ color: typeColor[next.tipo] || '#3288e0', background: `${typeColor[next.tipo] || '#3288e0'}18`, flexShrink: 0, padding: '3px 8px' }}
+              >
+                {(typeLabel[next.tipo] || next.tipo).slice(0, 4)}
+              </span>
+              <strong style={{ color: 'var(--accent)', flexShrink: 0 }}>{whenLabel(next.data_inicio)}</strong>
+              <strong style={{ color: 'var(--text)', fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{next.titulo}</strong>
+              <span style={{ color: 'var(--text-muted)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {[next.local, next.descricao].filter(Boolean).join(' · ')}
+              </span>
+            </button>
+          </div>
+          {rest.length > 0 && (
+            <div style={{ padding: '16px 22px', borderLeft: '1px solid #dbeafe', minWidth: 0 }}>
+              <div className="dash-eyebrow" style={{ marginBottom: 8 }}>DEPOIS</div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {rest.slice(0, 2).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setOpenItem(item)}
+                    style={{
+                      display: 'flex',
+                      gap: 8,
+                      minWidth: 0,
+                      fontSize: 13,
+                      border: 0,
+                      background: 'transparent',
+                      padding: 0,
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <strong style={{ color: 'var(--accent)', flexShrink: 0 }}>{whenLabel(item.data_inicio)}</strong>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.titulo}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {openItem && (
+        <AgendaEventModal
+          item={openItem}
+          typeLabel={typeLabel}
+          typeColor={typeColor}
+          onClose={() => setOpenItem(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+function AgendaEventModal({ item, typeLabel, typeColor, onClose }) {
+  const dateFull = (value) => value
+    ? new Date(value).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : 'Não informado';
+
+  return (
+    <div className="sale-modal-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="sale-modal" style={{ maxWidth: 520 }}>
+        <header className="sale-modal-head">
+          <div>
+            <div className="dash-eyebrow">DETALHES DA AGENDA</div>
+            <h2>{item.titulo}</h2>
+            <p>{typeLabel[item.tipo] || item.tipo}</p>
+          </div>
+          <button className="sale-modal-close" onClick={onClose} aria-label="Fechar">
+            <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
+          </button>
+        </header>
+        <div style={{ padding: 24, display: 'grid', gap: 14 }}>
+          <span
+            className="status-pill"
+            style={{ justifySelf: 'start', color: typeColor[item.tipo] || '#3288e0', background: `${typeColor[item.tipo] || '#3288e0'}18` }}
+          >
+            {typeLabel[item.tipo] || item.tipo}
+          </span>
+          <div>
+            <div className="db-stat-label">Início</div>
+            <strong>{dateFull(item.data_inicio)}</strong>
+          </div>
+          <div>
+            <div className="db-stat-label">Fim</div>
+            <strong>{dateFull(item.data_fim)}</strong>
+          </div>
+          <div>
+            <div className="db-stat-label">Local</div>
+            <p style={{ margin: 0 }}>{item.local || 'Não informado'}</p>
+          </div>
+          <div>
+            <div className="db-stat-label">Descrição</div>
+            <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{item.descricao || 'Sem observações.'}</p>
+          </div>
+          {item.usuario && (
+            <div>
+              <div className="db-stat-label">Responsável</div>
+              <p style={{ margin: 0 }}>{item.usuario.nome || item.usuario.login || item.usuario.email}</p>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

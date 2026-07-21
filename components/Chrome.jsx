@@ -4,29 +4,62 @@ import { useState, useEffect, useRef } from 'react';
 import { userHasModule } from '../lib/modules';
 
 export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresas = [], selectedEmpresa, currentEmpresa, onSelectEmpresa }) => {
+  const [collapsedGroups, setCollapsedGroups] = useState([]);
+
   const roleLabels = {
     admin: 'Administrador',
     gerente: 'Gerente',
     vendedor: 'Vendedor',
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'home' },
-    { id: 'loteamentos', label: 'Loteamentos', icon: 'map', badge: counts.loteamentos },
-    { id: 'predios', label: 'Prédios', icon: 'building', badge: counts.predios },
-    { id: 'locacoes', label: 'Locações', icon: 'rent', badge: counts.locacoes },
-    { id: 'comercial', label: 'Comercial', icon: 'chart', badge: counts.alertas },
-    { id: 'lotes', label: 'Lotes', icon: 'grid', badge: counts.lotes },
-    { id: 'vendas', label: 'Vendas', icon: 'bag', badge: counts.vendas },
-    { id: 'clientes', label: 'Clientes', icon: 'client', badge: counts.clientes },
-    { id: 'relatorios', label: 'Relatórios', icon: 'chart' },
-    ...(user?.role === 'admin'
-      ? [{ id: 'admin', label: 'Admin', icon: 'shield' }]
-      : []),
-    ...(user?.role === 'gerente'
-      ? [{ id: 'usuarios', label: 'Usuarios', icon: 'users' }]
-      : []),
-  ].filter((item) => user?.role !== 'vendedor' || userHasModule(user, item.id));
+  const navGroups = [
+    {
+      id: 'overview',
+      label: 'VISÃO GERAL',
+      items: [{ id: 'dashboard', label: 'Dashboard', icon: 'home' }],
+    },
+    {
+      id: 'properties',
+      label: 'IMÓVEIS',
+      items: [
+        { id: 'loteamentos', label: 'Loteamentos', icon: 'map', badge: counts.loteamentos },
+        { id: 'predios', label: 'Prédios', icon: 'building', badge: counts.predios },
+        { id: 'casas', label: 'Casas', icon: 'house', badge: counts.casas },
+        { id: 'lotes', label: 'Lotes', icon: 'grid', badge: counts.lotes },
+      ],
+    },
+    {
+      id: 'business',
+      label: 'NEGÓCIOS',
+      items: [
+        { id: 'comercial', label: 'Comercial', icon: 'chart', badge: counts.alertas },
+        { id: 'vendas', label: 'Vendas', icon: 'bag', badge: counts.vendas },
+        { id: 'locacoes', label: 'Locações', icon: 'rent', badge: counts.locacoes },
+        { id: 'clientes', label: 'Clientes', icon: 'client', badge: counts.clientes },
+        { id: 'agenda', label: 'Agenda', icon: 'calendar' },
+      ],
+    },
+    {
+      id: 'management',
+      label: 'GESTÃO',
+      items: [
+        { id: 'relatorios', label: 'Relatórios', icon: 'chart' },
+        ...(user?.role === 'admin'
+          ? [{ id: 'admin', label: 'Admin', icon: 'shield' }]
+          : []),
+        ...(user?.role === 'gerente'
+          ? [{ id: 'usuarios', label: 'Usuarios', icon: 'users' }]
+          : []),
+      ],
+    },
+  ]
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => user?.role !== 'vendedor' || userHasModule(user, item.id),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const iconPaths = {
     home: <path d="M3 7.5L9 3l6 4.5V14a1 1 0 0 1-1 1h-3v-4H7v4H4a1 1 0 0 1-1-1V7.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" fill="none" />,
@@ -37,8 +70,10 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
     users: <path d="M6.5 8a2.7 2.7 0 1 0 0-5.4A2.7 2.7 0 0 0 6.5 8zM2.5 15v-1.1c0-2 1.8-3.6 4-3.6s4 1.6 4 3.6V15M12 7.7a2.1 2.1 0 1 0 0-4.2M11.6 10.4c1.8.2 3.1 1.6 3.1 3.3V15" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
     shield: <path d="M9 2.5l5 1.8v3.8c0 3.2-1.9 5.7-5 7.1-3.1-1.4-5-3.9-5-7.1V4.3l5-1.8zM6.7 8.8l1.4 1.4 3.2-3.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />,
     building: <><rect x="3" y="2" width="12" height="13" rx="1" stroke="currentColor" strokeWidth="1.3" fill="none" /><line x1="3" y1="5" x2="15" y2="5" stroke="currentColor" strokeWidth="1" /><line x1="3" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1" /><line x1="3" y1="11" x2="15" y2="11" stroke="currentColor" strokeWidth="1" /><rect x="7" y="12" width="4" height="3" rx="0.5" fill="currentColor" opacity="0.4" /></>,
+    house: <><path d="M2.5 7.5L9 2.8l6.5 4.7V15H4V7.5z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" /><path d="M7 15v-4h4v4M5.5 8.5h2M10.5 8.5h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></>,
     chart: <path d="M3 15V9.5M7 15V3.5M11 15V7M15 15v-4.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />,
     rent: <><path d="M3 7.5L9 3l6 4.5V15H3V7.5z" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinejoin="round" /><path d="M6 15v-4h6v4M12.5 6.5c-.4-.5-1-.7-1.7-.7-1 0-1.8.5-1.8 1.2 0 1.8 3.7.7 3.7 2.7 0 .8-.8 1.4-1.9 1.4-.8 0-1.5-.3-1.9-.8M10.8 4.8v7.1" stroke="currentColor" strokeWidth="1.05" strokeLinecap="round" /></>,
+    calendar: <><rect x="3" y="4" width="12" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none" /><path d="M6 2.5v3M12 2.5v3M3 7h12M6 10h2M10 10h2M6 13h2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></>,
     settings: <path d="M7.2 2.5h3.6l.4 1.9c.4.2.8.4 1.1.7l1.8-.6 1.8 3.1-1.4 1.3c0 .2.1.5.1.7s0 .5-.1.7l1.4 1.3-1.8 3.1-1.8-.6c-.3.3-.7.5-1.1.7l-.4 1.9H7.2l-.4-1.9c-.4-.2-.8-.4-1.1-.7l-1.8.6-1.8-3.1 1.4-1.3c0-.2-.1-.5-.1-.7s0-.5.1-.7L2.1 7.6l1.8-3.1 1.8.6c.3-.3.7-.5 1.1-.7l.4-1.9zM9 11.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none" />,
     plans: <><path d="M3 3h10l2 2v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.3" fill="none"/><path d="M6 7h6M6 10h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></>,
   };
@@ -51,6 +86,30 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
   const displayRole = roleLabels[user?.role] || 'Usuario';
   const brandEmpresa = selectedEmpresa || currentEmpresa || user?.empresa || null;
   const brandName = brandEmpresa?.nome || user?.empresa_nome || 'Terreno';
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem('sidebar-collapsed-groups') || '[]');
+      if (Array.isArray(saved)) setCollapsedGroups(saved);
+    } catch {
+      setCollapsedGroups([]);
+    }
+  }, []);
+
+  const toggleGroup = (groupId) => {
+    setCollapsedGroups((current) => {
+      const next = current.includes(groupId)
+        ? current.filter((id) => id !== groupId)
+        : [...current, groupId];
+
+      try {
+        window.localStorage.setItem('sidebar-collapsed-groups', JSON.stringify(next));
+      } catch {
+        // O recolhimento continua funcionando mesmo com o armazenamento bloqueado.
+      }
+      return next;
+    });
+  };
 
   return (
     <aside className="sidebar">
@@ -79,21 +138,42 @@ export const Sidebar = ({ view, onNavigate, counts = {}, user, onLogout, empresa
       )}
 
       <nav className="sb-nav">
-        <div className="sb-nav-section">GESTÃO</div>
-        {navItems.map((item) => (
-          <NavItem
-            key={item.id}
-            item={item}
-            iconPath={iconPaths[item.icon]}
-            active={
-              view === item.id ||
-              (view === 'map' && item.id === 'loteamentos') ||
-              (view === 'editor' && item.id === 'loteamentos') ||
-              (view === 'predio' && item.id === 'predios')
-            }
-            onClick={() => onNavigate(item.id)}
-          />
-        ))}
+        {navGroups.map((group) => {
+          const collapsed = collapsedGroups.includes(group.id);
+
+          return (
+            <div className={'sb-nav-group' + (collapsed ? ' sb-nav-group-collapsed' : '')} key={group.id}>
+              <button
+                className="sb-nav-section sb-nav-toggle"
+                type="button"
+                aria-expanded={!collapsed}
+                aria-controls={`sidebar-group-${group.id}`}
+                onClick={() => toggleGroup(group.id)}
+              >
+                <span>{group.label}</span>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div className="sb-nav-group-items" id={`sidebar-group-${group.id}`}>
+                {group.items.map((item) => (
+                  <NavItem
+                    key={item.id}
+                    item={item}
+                    iconPath={iconPaths[item.icon]}
+                    active={
+                      view === item.id ||
+                      (view === 'map' && item.id === 'loteamentos') ||
+                      (view === 'editor' && item.id === 'loteamentos') ||
+                      (view === 'predio' && item.id === 'predios')
+                    }
+                    onClick={() => onNavigate(item.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </nav>
 
       <div className="sb-foot">
@@ -207,12 +287,14 @@ export const Header = ({ view, loteamentoNome, onBack }) => {
     vendas: 'Vendas',
     lotes: 'Lotes',
     clientes: 'Clientes',
+    agenda: 'Agenda',
     usuarios: 'Usuarios',
     admin: 'Admin',
     relatorios: 'Relatórios',
     settings: 'Configurações',
     predios: 'Prédios',
     predio: 'Prédio',
+    casas: 'Casas',
     locacoes: 'Locações',
     comercial: 'Comercial',
   };

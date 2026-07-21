@@ -1,180 +1,129 @@
 'use client';
+
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
-
-/* ─── paleta ─────────────────────────────────────────────────── */
-const C = {
-  navy:    '#0a1628',
-  navyMid: '#0d1b3e',
-  navyLt:  '#162c5a',
-  blue:    '#3288e0',
-  blueLt:  '#5ba8f0',
-  white:   '#ffffff',
-  light:   '#f4f7fb',
-  mid:     '#f0f4f9',
-  text:    '#0d1b3e',
-  muted:   '#5a7898',
-  border:  '#e0e8f2',
-};
-
-/* ─── imagens Unsplash ────────────────────────────────────────── */
-const IMG = {
-  hero:    'https://images.unsplash.com/photo-1486325212027-8081e485255e?auto=format&fit=crop&w=1400&q=80',
-  house1:  'https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=600&q=80',
-  house2:  'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=600&q=80',
-  house3:  'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=600&q=80',
-  aerial:  'https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=1200&q=80',
-  office:  'https://images.unsplash.com/photo-1554469384-e58fac16e23a?auto=format&fit=crop&w=800&q=80',
-  map:     'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=900&q=80',
-  team1:   'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&q=80',
-  team2:   'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&q=80',
-  team3:   'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=80&q=80',
-};
+import { getPlanos } from '../lib/api';
+import { fmtBRL } from '../lib/data';
+import { Building3DView } from '../components/Building3DView';
 
 const LOGIN_URL = '/?login=1';
 
-/* ─── hooks de animação ───────────────────────────────────────── */
-function useInView(threshold = 0.12) {
+const productStats = [
+  ['Vendas no mes', 'R$ 842 mil', '+18%'],
+  ['Unidades vendidas', '47', '+9'],
+  ['Reservas ativas', '23', 'hoje'],
+  ['Ocupacao', '81%', 'predios'],
+];
+
+const featureRows = [
+  {
+    eyebrow: 'DASHBOARD REAL',
+    title: 'A operacao inteira aparece em uma tela de trabalho.',
+    text: 'Vendas, estoque, agenda, locacoes e performance ficam organizados para gerente, vendedor e admin.',
+    points: ['Indicadores por empresa', 'Ultimas vendas', 'Agenda do time', 'Resumo de locacoes'],
+    visual: <DashboardShot />,
+  },
+  {
+    eyebrow: 'MAPA DE LOTEAMENTOS',
+    title: 'Mapa comercial com lote, status, preco e cliente.',
+    text: 'O sistema usa o cadastro real dos lotes para separar disponiveis, reservados e vendidos, sem planilha paralela.',
+    points: ['Editor visual', 'Status por cor', 'Historico de negociacao', 'Link publico'],
+    visual: <MapShot />,
+  },
+  {
+    eyebrow: 'PREDIOS E LOCACOES',
+    title: 'Controle de apartamentos, vendas e alugueis no mesmo painel.',
+    text: 'Pronto para construtoras e imobiliarias que precisam gerenciar predios, andares, apartamentos e contratos.',
+    points: ['Planta por andar', 'Apartamentos vendidos ou alugados', 'Pagamentos de locacao', 'Relatorios gerenciais'],
+    visual: <BuildingShot3D />,
+  },
+];
+
+const moduleCards = [
+  {
+    title: 'Gerenciamento de equipe',
+    text: 'Controle usuarios por perfil, permissoes por modulo e acesso por empresa.',
+    meta: 'Admin, gerente e vendedor',
+  },
+  {
+    title: 'Agenda comercial',
+    text: 'Organize visitas, retornos, compromissos e tarefas ligadas a clientes e empreendimentos.',
+    meta: 'Rotina do time',
+  },
+  {
+    title: 'Loteamentos',
+    text: 'Cadastre empreendimentos, desenhe lotes no mapa e acompanhe reservas, vendas e negociacoes.',
+    meta: 'Mapa visual',
+  },
+  {
+    title: 'Casas',
+    text: 'Cadastre casas para venda ou aluguel, comodos, valores, cliente vinculado e historico comercial.',
+    meta: 'Venda e locacao',
+  },
+  {
+    title: 'Predios',
+    text: 'Controle predios, andares, apartamentos, planta baixa, status e contratos de locacao.',
+    meta: 'Apartamentos e andares',
+  },
+  {
+    title: 'Relatorios e comercial',
+    text: 'Veja funil, reservas abertas, propostas, comissoes, vendas e desempenho da equipe.',
+    meta: 'Gestao da operacao',
+  },
+];
+
+function useInView() {
   const ref = useRef(null);
   const [visible, setVisible] = useState(false);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const obs = new IntersectionObserver(
-      ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } },
-      { threshold }
-    );
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setVisible(true);
+        obs.disconnect();
+      }
+    }, { threshold: 0.18 });
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
+
   return [ref, visible];
 }
 
-function useCounter(target, duration, active) {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    let raf;
-    const t0 = performance.now();
-    const tick = (now) => {
-      const p = Math.min((now - t0) / duration, 1);
-      const eased = 1 - (1 - p) ** 3;
-      setVal(Math.round(eased * target));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [active, target, duration]);
-  return val;
-}
-
-/* ─── keyframes globais ───────────────────────────────────────── */
-const GLOBAL_CSS = `
-  @keyframes modalIn {
-    from { opacity:0; transform:scale(0.96) translateY(8px); }
-    to   { opacity:1; transform:scale(1) translateY(0); }
-  }
-  @keyframes spin { to { transform:rotate(360deg); } }
-  @keyframes pulse-ring {
-    0%   { transform:scale(1);   opacity:0.8; }
-    100% { transform:scale(1.5); opacity:0; }
-  }
-  @keyframes floatA {
-    0%,100% { transform:translateY(0px) rotate(0.4deg); }
-    50%     { transform:translateY(-14px) rotate(-0.4deg); }
-  }
-  @keyframes floatB {
-    0%,100% { transform:translateY(0px) rotate(-0.3deg); }
-    50%     { transform:translateY(-10px) rotate(0.3deg); }
-  }
-  @keyframes floatC {
-    0%,100% { transform:translateY(0px); }
-    55%     { transform:translateY(-7px); }
-  }
-  @keyframes heroLeft {
-    from { opacity:0; transform:translateX(-36px); }
-    to   { opacity:1; transform:translateX(0); }
-  }
-  @keyframes heroRight {
-    from { opacity:0; transform:translateX(36px); }
-    to   { opacity:1; transform:translateX(0); }
-  }
-  @keyframes heroFadeUp {
-    from { opacity:0; transform:translateY(18px); }
-    to   { opacity:1; transform:translateY(0); }
-  }
-`;
-
-/* ─── componentes auxiliares ─────────────────────────────────── */
-function Logo({ light }) {
+function Logo({ light = false }) {
   return (
-    <a href="/" aria-label="Norte" style={{ display:'flex', alignItems:'center', textDecoration:'none' }}>
-      <img
-        src="/logo2.png"
-        alt="Norte"
-        style={{
-          height: 38,
-          width: 'auto',
-          display: 'block',
-          filter: light ? 'none' : 'invert(1)',
-          transition: 'filter 0.25s',
-        }}
-      />
+    <a href="/" className={`lp-logo ${light ? 'is-light' : ''}`} aria-label="ImobSys">
+      <span>ImobSys</span>
     </a>
   );
 }
 
-function Btn({ href, primary, large, light, children }) {
-  const [hov, setHov] = useState(false);
-  const base = {
-    display:'inline-flex', alignItems:'center', gap:7,
-    padding: large ? '14px 32px' : '10px 22px',
-    borderRadius:10, fontWeight:700,
-    fontSize: large ? 16 : 14,
-    textDecoration:'none', cursor:'pointer',
-    transition:'all 0.2s cubic-bezier(0.16,1,0.3,1)', whiteSpace:'nowrap',
+function Navbar({ scrolled, containerRef, onLogin }) {
+  const scrollTo = (id) => {
+    const el = document.getElementById(id);
+    if (!el || !containerRef.current) return;
+    containerRef.current.scrollTo({ top: el.offsetTop - 70, behavior: 'smooth' });
   };
-  const style = primary
-    ? { ...base,
-        background: C.blue, color:'#fff',
-        boxShadow: hov ? '0 8px 28px rgba(50,136,224,0.65)' : '0 4px 20px rgba(50,136,224,0.45)',
-        transform: hov ? 'translateY(-2px)' : 'translateY(0)',
-      }
-    : light
-      ? { ...base,
-          background: hov ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.1)',
-          border:'1px solid rgba(255,255,255,0.25)', color:'#fff',
-          transform: hov ? 'translateY(-2px)' : 'translateY(0)',
-        }
-      : { ...base,
-          background: hov ? C.light : 'transparent',
-          border:`1px solid ${C.border}`, color: C.text,
-          transform: hov ? 'translateY(-2px)' : 'translateY(0)',
-        };
+
   return (
-    <a href={href} style={style}
-       onMouseEnter={() => setHov(true)}
-       onMouseLeave={() => setHov(false)}>
-      {children}
-    </a>
+    <nav className={`lp-nav ${scrolled ? 'lp-nav-scrolled' : ''}`}>
+      <Logo light={scrolled} />
+      <div className="lp-nav-links">
+        <button onClick={() => scrollTo('produto')}>Produto</button>
+        <button onClick={() => scrollTo('funcionalidades')}>Funcionalidades</button>
+        <button onClick={() => scrollTo('planos')}>Planos</button>
+      </div>
+      <div className="lp-nav-actions">
+        <button className="lp-btn lp-btn-ghost" onClick={onLogin}>Entrar</button>
+        <a className="lp-btn lp-btn-primary" href="/cadastro">Comecar agora</a>
+      </div>
+    </nav>
   );
 }
 
-function Tag({ children }) {
-  return (
-    <span style={{
-      display:'inline-block',
-      background:'rgba(50,136,224,0.1)', border:'1px solid rgba(50,136,224,0.25)',
-      borderRadius:999, padding:'4px 14px',
-      color: C.blue, fontSize:11, fontWeight:800, letterSpacing:'0.12em',
-    }}>
-      {children}
-    </span>
-  );
-}
-
-/* ─── Modal de login ──────────────────────────────────────────── */
 function LoginModal({ onClose }) {
   const { login } = useAuth();
   const router = useRouter();
@@ -182,1064 +131,475 @@ function LoginModal({ onClose }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const mouseDownRef = useRef(false);
 
   useEffect(() => {
-    const fn = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', fn);
-    return () => window.removeEventListener('keydown', fn);
+    const onKey = (event) => event.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError(''); setLoading(true);
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    setLoading(true);
     try {
       await login(email, password);
       router.replace('/app');
     } catch (err) {
-      setError(err.message ?? 'Credenciais inválidas');
+      setError(err.message || 'Nao foi possivel entrar.');
     } finally {
       setLoading(false);
     }
   }
 
-  const inp = (focused) => ({
-    width:'100%', padding:'11px 14px',
-    background: focused ? '#fff' : C.light,
-    border: `1.5px solid ${focused ? C.blue : C.border}`,
-    borderRadius:10, color: C.text, fontSize:14,
-    outline:'none', boxSizing:'border-box',
-    fontFamily:'inherit', transition:'all 0.15s',
-    cursor: 'text',
-  });
-
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-      {/* camada de blur separada do modal — evita bug do Chrome que esconde o cursor em filhos de backdrop-filter */}
-      <div
-        onMouseDown={() => { mouseDownRef.current = true; }}
-        onClick={() => { if (mouseDownRef.current) onClose(); }}
-        style={{
-          position:'fixed', inset:0,
-          background:'rgba(6,12,26,0.72)',
-          backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)',
-        }}
-      />
-      <div
-        onMouseDown={() => { mouseDownRef.current = false; }}
-        style={{
-          width:'100%', maxWidth:420,
-          background:'#fff', borderRadius:24,
-          boxShadow:'0 40px 80px rgba(0,0,0,0.35)',
-          padding:'40px 40px 36px',
-          position:'relative', zIndex:1,
-          colorScheme:'light',
-          animation:'modalIn 0.25s cubic-bezier(0.16,1,0.3,1)',
-        }}
-      >
-        <button onClick={onClose} style={{
-          position:'absolute', top:14, right:14,
-          background:'none', border:'none', cursor:'pointer',
-          width:32, height:32, borderRadius:8,
-          display:'flex', alignItems:'center', justifyContent:'center',
-          color: C.muted,
-        }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
+    <div className="lp-modal-shell" role="dialog" aria-modal="true">
+      <button className="lp-modal-backdrop" aria-label="Fechar" onClick={onClose} />
+      <section className="lp-login-modal">
+        <button className="lp-icon-btn lp-modal-close" onClick={onClose} aria-label="Fechar">
+          <CloseIcon />
         </button>
-
-        <div style={{ textAlign:'center', marginBottom:28 }}>
-          <div style={{
-            width:48, height:48, background: C.blue, borderRadius:14,
-            display:'flex', alignItems:'center', justifyContent:'center',
-            margin:'0 auto 14px',
-            boxShadow:'0 6px 20px rgba(50,136,224,0.4)',
-          }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-9z" fill="#fff"/>
-            </svg>
+        <div className="lp-login-side">
+          <Logo light />
+          <div>
+            <span className="lp-kicker">ACESSO AO SISTEMA</span>
+            <h2>Entre para acompanhar sua operacao.</h2>
+            <p>Dashboard, mapas, clientes, vendas, locacoes e assinatura no mesmo ambiente.</p>
           </div>
-          <h2 style={{ fontSize:22, fontWeight:800, color: C.navy, margin:'0 0 6px', letterSpacing:'-0.01em' }}>
-            Bem-vindo de volta
-          </h2>
-          <p style={{ color: C.muted, fontSize:14, margin:0 }}>
-            Entre com seu e-mail ou login
-          </p>
+          <MiniMetricGrid />
         </div>
-
-        <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        <form className="lp-login-form" onSubmit={handleSubmit}>
           <div>
-            <label style={{ display:'block', fontSize:12, fontWeight:700, color: C.muted, marginBottom:5, letterSpacing:'0.02em' }}>
-              E-MAIL OU LOGIN
-            </label>
-            <FocusInput value={email} onChange={e=>setEmail(e.target.value)} type="text" placeholder="seu@email.com" required autoComplete="username" inp={inp}/>
+            <span className="lp-kicker">LOGIN</span>
+            <h3>Bem-vindo de volta</h3>
+            <p>Use o e-mail ou login cadastrado na sua empresa.</p>
           </div>
-
-          <div>
-            <label style={{ display:'block', fontSize:12, fontWeight:700, color: C.muted, marginBottom:5, letterSpacing:'0.02em' }}>
-              SENHA
-            </label>
-            <FocusInput value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" required autoComplete="current-password" inp={inp} showToggle/>
-          </div>
-
-          {error && (
-            <div style={{
-              background:'#fff0f0', border:'1px solid #fca5a5', borderRadius:9,
-              padding:'10px 14px', color:'#dc2626', fontSize:13,
-              display:'flex', alignItems:'center', gap:8,
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke="#dc2626" strokeWidth="1.8"/>
-                <path d="M12 8v4M12 16h.01" stroke="#dc2626" strokeWidth="1.8" strokeLinecap="round"/>
-              </svg>
-              {error}
-            </div>
-          )}
-
-          <button type="submit" disabled={loading} style={{
-            padding:'13px', borderRadius:10,
-            background: C.blue,
-            color:'#fff', border:'none', fontWeight:700, fontSize:15,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            marginTop:4,
-            boxShadow:'0 4px 16px rgba(50,136,224,0.35)',
-            fontFamily:'inherit', transition:'all 0.15s',
-            display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-            opacity: loading ? 0.75 : 1,
-          }}>
-            {loading && (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation:'spin 1s linear infinite' }}>
-                <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5"/>
-                <path d="M12 3a9 9 0 0 1 9 9" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-              </svg>
-            )}
+          <label>
+            <span>E-mail ou login</span>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
+          </label>
+          <label>
+            <span>Senha</span>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="current-password" required />
+          </label>
+          {error && <div className="lp-error">{error}</div>}
+          <button className="lp-btn lp-btn-primary lp-btn-full" type="submit" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+          <div className="lp-login-foot">
+            <a href="/login">Esqueceu a senha?</a>
+            <a href="/cadastro">Cadastrar empresa</a>
+          </div>
         </form>
-
-        <div style={{ textAlign:'center', marginTop:20, paddingTop:18, borderTop:`1px solid ${C.border}` }}>
-          <span style={{ fontSize:13, color: C.muted }}>
-            Não tem conta?{' '}
-            <a href="/cadastro" style={{ color: C.blue, fontWeight:700, textDecoration:'none' }}>
-              Cadastrar empresa
-            </a>
-          </span>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }
 
-function FocusInput({ value, onChange, type, placeholder, required, autoComplete, inp, showToggle }) {
-  const [focused, setFocused] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const inputType = showToggle ? (visible ? 'text' : 'password') : type;
-
-  const input = (
-    <input
-      value={value} onChange={onChange} type={inputType}
-      placeholder={placeholder} required={required} autoComplete={autoComplete}
-      style={{ ...inp(focused), ...(showToggle ? { paddingRight: 40 } : {}) }}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-    />
-  );
-
-  if (!showToggle) return input;
-
-  return (
-    <div style={{ position: 'relative' }}>
-      {input}
-      <button
-        type="button"
-        tabIndex={-1}
-        onClick={() => setVisible(v => !v)}
-        style={{
-          position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-          color: focused ? C.blue : C.muted,
-          display: 'flex', alignItems: 'center', transition: 'color 0.15s',
-        }}
-      >
-        {visible ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M1 1l22 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
-        ) : (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/>
-          </svg>
-        )}
-      </button>
-    </div>
-  );
-}
-
-/* ─── Navbar ──────────────────────────────────────────────────── */
-function Navbar({ scrolled, containerRef, onLogin }) {
-  const scrollTo = (id) => {
-    const el = document.getElementById(id);
-    if (!el || !containerRef?.current) return;
-    containerRef.current.scrollTo({ top: el.offsetTop - 64, behavior: 'smooth' });
-  };
-
-  const links = [
-    { label: 'Como funciona', id: 'como-funciona' },
-    { label: 'Funcionalidades', id: 'funcionalidades' },
-    { label: 'Preços',          id: 'precos' },
-  ];
-
-  return (
-    <nav style={{
-      position:'fixed', top:0, left:0, right:0, zIndex:200,
-      height:64,
-      background: scrolled ? 'rgba(255,255,255,0.97)' : 'transparent',
-      backdropFilter: scrolled ? 'blur(20px)' : 'none',
-      WebkitBackdropFilter: scrolled ? 'blur(20px)' : 'none',
-      borderBottom: scrolled ? `1px solid ${C.border}` : '1px solid transparent',
-      transition:'all 0.3s cubic-bezier(0.16,1,0.3,1)',
-      display:'grid',
-      gridTemplateColumns:'1fr auto 1fr',
-      alignItems:'center',
-      padding:'0 max(28px, calc((100vw - 1200px)/2))',
-    }}>
-      <div style={{ justifySelf:'start' }} />
-
-      <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-        {links.map(({ label, id }) => (
-          <button key={id} onClick={() => scrollTo(id)} style={{
-            padding:'8px 16px', borderRadius:8, cursor:'pointer',
-            color: scrolled ? C.text : 'rgba(255,255,255,0.8)',
-            fontSize:14, fontWeight:500,
-            background:'none', border:'none',
-            transition:'color 0.18s, background 0.18s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = scrolled ? C.light : 'rgba(255,255,255,0.1)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ justifySelf:'end', display:'flex', alignItems:'center', gap:8 }}>
-        <div style={{ width:1, height:20, background: scrolled ? C.border : 'rgba(255,255,255,0.2)', marginRight:4 }} />
-        <button onClick={onLogin} style={{
-          padding:'10px 22px', borderRadius:10, cursor:'pointer',
-          background: scrolled ? 'transparent' : 'rgba(255,255,255,0.1)',
-          border: scrolled ? `1px solid ${C.border}` : '1px solid rgba(255,255,255,0.25)',
-          color: scrolled ? C.text : '#fff',
-          fontSize:14, fontWeight:700, fontFamily:'inherit',
-          transition:'all 0.18s', whiteSpace:'nowrap',
-        }}>
-          Entrar
-        </button>
-        <Btn href="/cadastro" primary>Começar grátis</Btn>
-      </div>
-    </nav>
-  );
-}
-
-/* ─── Hero ────────────────────────────────────────────────────── */
 function Hero() {
   return (
-    <section style={{
-      minHeight:'100vh', position:'relative',
-      display:'flex', flexDirection:'column', justifyContent:'center',
-      padding:'120px max(28px, calc((100vw - 1200px)/2)) 80px',
-      overflow:'hidden',
-    }}>
-      {/* fundo */}
-      <div style={{
-        position:'absolute', inset:0, zIndex:0,
-        backgroundImage:`url(${IMG.hero})`,
-        backgroundSize:'cover', backgroundPosition:'center top',
-      }}/>
-      <div style={{
-        position:'absolute', inset:0, zIndex:1,
-        background:'linear-gradient(135deg, rgba(8,15,30,0.94) 0%, rgba(10,22,46,0.87) 60%, rgba(13,27,62,0.75) 100%)',
-      }}/>
-      {/* grade */}
-      <div style={{
-        position:'absolute', inset:0, zIndex:2, pointerEvents:'none',
-        backgroundImage:[
-          'linear-gradient(rgba(50,136,224,0.08) 1px, transparent 1px)',
-          'linear-gradient(90deg, rgba(50,136,224,0.08) 1px, transparent 1px)',
-        ].join(','),
-        backgroundSize:'60px 60px',
-        maskImage:'radial-gradient(ellipse 80% 70% at 50% 50%, black 30%, transparent 100%)',
-        WebkitMaskImage:'radial-gradient(ellipse 80% 70% at 50% 50%, black 30%, transparent 100%)',
-      }}/>
-      <div style={{
-        position:'absolute', inset:0, zIndex:2, pointerEvents:'none',
-        backgroundImage:'radial-gradient(rgba(50,136,224,0.25) 1.5px, transparent 1.5px)',
-        backgroundSize:'60px 60px',
-        maskImage:'radial-gradient(ellipse 70% 60% at 50% 50%, black 20%, transparent 100%)',
-        WebkitMaskImage:'radial-gradient(ellipse 70% 60% at 50% 50%, black 20%, transparent 100%)',
-      }}/>
-
-      {/* conteúdo */}
-      <div style={{ position:'relative', zIndex:3, display:'grid', gridTemplateColumns:'1fr 1fr', gap:64, alignItems:'center' }}>
-
-        {/* coluna esquerda — entra da esquerda */}
-        <div style={{ animation:'heroLeft 0.9s cubic-bezier(0.16,1,0.3,1) 0.1s both' }}>
-          <div style={{ animation:'heroFadeUp 0.6s ease 0s both' }}>
-            <Tag>SISTEMA IMOBILIÁRIO COMPLETO</Tag>
-          </div>
-          <h1 style={{
-            fontSize:'clamp(36px, 4.5vw, 60px)', fontWeight:900,
-            color:'#fff', lineHeight:1.05, margin:'20px 0 22px',
-            letterSpacing:'-0.03em',
-            animation:'heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.18s both',
-          }}>
-            Gerencie seus<br/>
-            <span style={{
-              background:`linear-gradient(90deg, ${C.blueLt}, #a0d4ff)`,
-              WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
-            }}>
-              loteamentos
-            </span><br/>
-            com precisão
-          </h1>
-          <p style={{
-            color:'rgba(255,255,255,0.6)', fontSize:17, lineHeight:1.7,
-            margin:'0 0 36px', maxWidth:480,
-            animation:'heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.28s both',
-          }}>
-            Do cadastro da empresa ao fechamento da venda — controle de lotes,
-            editor de mapas interativos e dashboards em tempo real para imobiliárias modernas.
-          </p>
-          <div style={{
-            display:'flex', gap:12, flexWrap:'wrap', marginBottom:48,
-            animation:'heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.36s both',
-          }}>
-            <Btn href="/cadastro" primary large>Criar conta gratuita →</Btn>
-            <Btn href={LOGIN_URL} light large>Já tenho conta</Btn>
-          </div>
-
-          {/* stats */}
-          <div style={{
-            display:'flex', gap:32, borderTop:'1px solid rgba(255,255,255,0.1)', paddingTop:28,
-            animation:'heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.44s both',
-          }}>
-            {[['200+','Imobiliárias'],['50 mil','Lotes gerenciados'],['R$2 bi+','em transações']].map(([n,l]) => (
-              <div key={l}>
-                <div style={{ fontSize:22, fontWeight:800, color:'#fff', lineHeight:1 }}>{n}</div>
-                <div style={{ fontSize:12, color:'rgba(255,255,255,0.45)', marginTop:4, fontWeight:500 }}>{l}</div>
-              </div>
-            ))}
-          </div>
+    <section className="lp-hero" id="produto">
+      <div className="lp-hero-copy">
+        <span className="lp-kicker">SAAS PARA IMOBILIARIAS, LOTEADORAS E CONSTRUTORAS</span>
+        <h1>ImobSys organiza vendas, estoque, mapas e locacoes em um painel unico.</h1>
+        <p>
+          Um sistema operacional para sua imobiliaria trabalhar com dados reais:
+          loteamentos, casas, predios, clientes, equipe, agenda, contratos, relatorios e planos de acesso.
+        </p>
+        <div className="lp-hero-actions">
+          <a className="lp-btn lp-btn-primary lp-btn-lg" href="/cadastro">Criar empresa</a>
+          <a className="lp-btn lp-btn-dark lp-btn-lg" href={LOGIN_URL}>Entrar no sistema</a>
         </div>
-
-        {/* coluna direita — entra da direita */}
-        <div style={{ position:'relative', height:500, animation:'heroRight 0.9s cubic-bezier(0.16,1,0.3,1) 0.35s both' }}>
-
-          {/* card principal — flutua */}
-          <div style={{ position:'absolute', top:0, right:0, animation:'floatA 7s ease-in-out 1s infinite' }}>
-            <div style={{
-              width:340, borderRadius:20, overflow:'hidden',
-              boxShadow:'0 32px 80px rgba(0,0,0,0.55)',
-              border:'1px solid rgba(255,255,255,0.12)',
-            }}>
-              <img src={IMG.house2} alt="Loteamento" style={{ width:'100%', height:220, objectFit:'cover', display:'block' }}/>
-              <div style={{ background:'rgba(10,22,46,0.97)', padding:'14px 16px' }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <div>
-                    <div style={{ color:'rgba(255,255,255,0.5)', fontSize:10, fontWeight:700, letterSpacing:'0.1em', marginBottom:3 }}>LOTEAMENTO JARDIM REAL</div>
-                    <div style={{ color:'#fff', fontWeight:800, fontSize:16 }}>248 lotes · R$ 2,4 M</div>
-                  </div>
-                  <div style={{
-                    background:'rgba(50,136,224,0.2)', border:'1px solid rgba(50,136,224,0.4)',
-                    borderRadius:8, padding:'5px 10px',
-                    color: C.blueLt, fontSize:11, fontWeight:700,
-                  }}>
-                    142 disp.
-                  </div>
-                </div>
-                <div style={{ marginTop:10, background:'rgba(255,255,255,0.06)', borderRadius:6, height:5, overflow:'hidden' }}>
-                  <div style={{ width:'42%', height:'100%', background: C.blue, borderRadius:6 }}/>
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', marginTop:5 }}>
-                  <span style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>42% vendido</span>
-                  <span style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>58% disponível</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* card menor — flutua diferente */}
-          <div style={{ position:'absolute', bottom:80, left:0, animation:'floatB 8s ease-in-out 0s infinite' }}>
-            <div style={{
-              width:230, borderRadius:16, overflow:'hidden',
-              boxShadow:'0 24px 60px rgba(0,0,0,0.5)',
-              border:'1px solid rgba(255,255,255,0.1)',
-            }}>
-              <img src={IMG.house1} alt="Casa" style={{ width:'100%', height:130, objectFit:'cover', display:'block' }}/>
-              <div style={{ background:'rgba(10,22,46,0.97)', padding:'12px 14px' }}>
-                <div style={{ color:'rgba(255,255,255,0.4)', fontSize:10, fontWeight:700, letterSpacing:'0.08em', marginBottom:2 }}>LOTE A-14</div>
-                <div style={{ color:'#fff', fontWeight:700, fontSize:14 }}>R$ 180.000</div>
-                <div style={{
-                  marginTop:7, display:'inline-block',
-                  background:'rgba(34,197,94,0.15)', border:'1px solid rgba(34,197,94,0.3)',
-                  borderRadius:6, padding:'3px 9px',
-                  color:'#4ade80', fontSize:10, fontWeight:700,
-                }}>● DISPONÍVEL</div>
-              </div>
-            </div>
-          </div>
-
-          {/* badge notificação — flutua suave */}
-          <div style={{ position:'absolute', bottom:40, right:20, animation:'floatC 5s ease-in-out 2s infinite' }}>
-            <div style={{
-              background:'rgba(255,255,255,0.95)', backdropFilter:'blur(12px)',
-              borderRadius:14, padding:'12px 16px',
-              boxShadow:'0 12px 40px rgba(0,0,0,0.3)',
-              display:'flex', alignItems:'center', gap:10,
-              border:'1px solid rgba(255,255,255,0.5)',
-            }}>
-              <div style={{
-                width:36, height:36, borderRadius:10, background: C.blue,
-                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
-              }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="#fff"/>
-                </svg>
-              </div>
-              <div>
-                <div style={{ fontSize:12, fontWeight:800, color: C.navy }}>Venda registrada!</div>
-                <div style={{ fontSize:11, color: C.muted }}>Lote B-07 · R$ 220.000</div>
-              </div>
-            </div>
-          </div>
+        <div className="lp-trust-row">
+          {['Mapa visual', 'CRM comercial', 'Assinatura por plano', 'Multiempresa'].map((item) => (
+            <span key={item}><CheckIcon />{item}</span>
+          ))}
         </div>
       </div>
-
-      {/* wave divider */}
-      <div style={{ position:'absolute', bottom:0, left:0, right:0, zIndex:3, lineHeight:0 }}>
-        <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width:'100%', display:'block' }}>
-          <path d="M0 60 C360 20 1080 20 1440 60 L1440 60 L0 60Z" fill={C.light}/>
-        </svg>
+      <div className="lp-hero-media" aria-label="Previa do sistema ImobSys">
+        <ProductShell active="Dashboard">
+          <DashboardShot large />
+        </ProductShell>
       </div>
     </section>
   );
 }
 
-/* ─── Logos / social proof ────────────────────────────────────── */
-function SocialProof() {
-  const [ref, visible] = useInView(0.2);
-  const orgs = ['Imobiliária Central','UrbaLotes','Construtora Viva','Terras Sul','Grupo Alfa','LoteSmart'];
+function MiniMetricGrid() {
   return (
-    <section ref={ref} style={{ background: C.light, padding:'40px max(28px, calc((100vw - 1200px)/2))' }}>
-      <p style={{
-        textAlign:'center', color: C.muted, fontSize:13, fontWeight:600, letterSpacing:'0.08em', marginBottom:28,
-        opacity: visible ? 1 : 0,
-        transition:'opacity 0.6s ease 0.1s',
-      }}>
-        USADO POR IMOBILIÁRIAS E LOTEADORAS EM TODO O BRASIL
-      </p>
-      <div style={{ display:'flex', flexWrap:'wrap', justifyContent:'center', gap:'12px 32px' }}>
-        {orgs.map((o, i) => (
-          <span key={o} style={{
-            color:'#b0bece', fontWeight:800, fontSize:14, letterSpacing:'-0.01em',
-            opacity: visible ? 1 : 0,
-            transform: visible ? 'translateY(0)' : 'translateY(10px)',
-            transition: `opacity 0.5s ease ${0.05 + i * 0.06}s, transform 0.5s ease ${0.05 + i * 0.06}s`,
-          }}>
-            {o}
+    <div className="lp-mini-grid">
+      {productStats.map(([label, value, sub]) => (
+        <div key={label}>
+          <span>{label}</span>
+          <strong>{value}</strong>
+          <em>{sub}</em>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProductShell({ children, active }) {
+  return (
+    <div className="lp-product-shell">
+      <aside>
+        <div className="lp-shell-logo">I</div>
+        {['Dashboard', 'Loteamentos', 'Casas', 'Predios', 'Agenda', 'Equipe'].map((item) => (
+          <span key={item} className={item === active ? 'is-active' : ''}>{item}</span>
+        ))}
+      </aside>
+      <main>
+        <div className="lp-shell-top">
+          <span>{active}</span>
+          <div>
+            <i />
+            <i />
+            <i />
+          </div>
+        </div>
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function DashboardShot({ large = false }) {
+  return (
+    <div className={`lp-dashboard-shot ${large ? 'is-large' : ''}`}>
+      <div className="lp-shot-header">
+        <div>
+          <span>HOJE</span>
+          <strong>Boa tarde, equipe.</strong>
+        </div>
+        <button>Atualizar</button>
+      </div>
+      <MiniMetricGrid />
+      <div className="lp-sales-panel">
+        <div className="lp-panel-head">
+          <strong>Ultimas vendas</strong>
+          <span>R$ 842 mil</span>
+        </div>
+        {[
+          ['Lote 12', 'Jardim Norte', 'R$ 180 mil'],
+          ['Apto 204', 'Residencial Lago', 'R$ 420 mil'],
+          ['Lote 08', 'Nova Praca', 'R$ 242 mil'],
+        ].map(([code, name, value]) => (
+          <div className="lp-sale-row" key={code}>
+            <b>{code}</b>
+            <span>{name}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MapShot() {
+  const lots = [
+    ['A01', 12, 22, 76, 48, 'sold'],
+    ['A02', 88, 22, 76, 48, 'reserved'],
+    ['A03', 164, 22, 76, 48, 'available'],
+    ['A04', 240, 22, 76, 48, 'available'],
+    ['A05', 316, 22, 76, 48, 'reserved'],
+    ['A06', 392, 22, 76, 48, 'available'],
+    ['A07', 12, 104, 76, 48, 'available'],
+    ['A08', 88, 104, 76, 48, 'available'],
+    ['A09', 164, 104, 76, 48, 'sold'],
+    ['A10', 240, 104, 76, 48, 'available'],
+    ['A11', 316, 104, 68, 48, 'available'],
+    ['A12', 384, 104, 76, 48, 'reserved'],
+    ['A13', 384, 152, 76, 56, 'available'],
+    ['A14', 384, 208, 76, 48, 'sold'],
+  ];
+  const trees = [
+    [40, 198, 9], [96, 214, 12], [145, 192, 10], [240, 222, 14],
+    [286, 188, 9], [330, 218, 11], [355, 180, 8], [194, 218, 9],
+  ];
+  return (
+    <div className="lp-map-shot">
+      <svg viewBox="0 0 520 330" role="img" aria-label="Mapa real de loteamento do sistema">
+        <defs>
+          <pattern id="lp-map-bg-real" width="90" height="90" patternUnits="userSpaceOnUse">
+            <image href="/textures/fundo.jpg" width="90" height="90" preserveAspectRatio="xMidYMid slice" />
+          </pattern>
+          <filter id="lp-map-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="6" stdDeviation="5" floodColor="#0f172a" floodOpacity=".2" />
+          </filter>
+        </defs>
+        <rect width="520" height="330" fill="url(#lp-map-bg-real)" />
+        <g opacity=".16" stroke="#fff" strokeWidth="1">
+          {Array.from({ length: 9 }).map((_, i) => <line key={`v-${i}`} x1={i * 65} y1="0" x2={i * 65} y2="330" />)}
+          {Array.from({ length: 6 }).map((_, i) => <line key={`h-${i}`} x1="0" y1={i * 65} x2="520" y2={i * 65} />)}
+        </g>
+        <rect x="10" y="84" width="470" height="28" rx="14" fill="#d9d6bd" filter="url(#lp-map-shadow)" />
+        <rect x="18" y="91" width="454" height="14" rx="7" fill="#3f4448" />
+        <path d="M480 98 L480 286" fill="none" stroke="#d9d6bd" strokeWidth="32" strokeLinecap="round" filter="url(#lp-map-shadow)" />
+        <path d="M480 98 L480 286" fill="none" stroke="#3f4448" strokeWidth="18" strokeLinecap="round" />
+        <g stroke="#d7d0a8" strokeWidth="1.2" strokeDasharray="10 9" opacity=".9">
+          <line x1="24" y1="98" x2="458" y2="98" />
+          <line x1="480" y1="113" x2="480" y2="276" />
+        </g>
+        <rect x="12" y="154" width="368" height="124" fill="rgba(93,164,56,.52)" stroke="rgba(50,86,37,.35)" />
+        <rect x="18" y="194" width="58" height="68" rx="4" fill="#4597a1" stroke="#845f39" strokeWidth="3" />
+        <text x="47" y="231" textAnchor="middle" fill="#fff" fontSize="10" fontWeight="800" fontStyle="italic">Lago</text>
+        <text x="214" y="220" textAnchor="middle" fill="#334155" fontSize="9">Praca</text>
+        {trees.map(([cx, cy, r]) => (
+          <g key={`${cx}-${cy}`}>
+            <circle cx={cx} cy={cy} r={r} fill="#4c7f2e" />
+            <circle cx={cx - r * .35} cy={cy + r * .18} r={r * .62} fill="#6ba53a" opacity=".8" />
+            <circle cx={cx + r * .36} cy={cy - r * .18} r={r * .58} fill="#356b24" opacity=".8" />
+          </g>
+        ))}
+        {lots.map(([label, x, y, w, h, status]) => (
+          <g key={label}>
+            <rect x={x} y={y} width={w} height={h} className={`lp-lot-${status}`} />
+            <text x={x + w / 2} y={y + h / 2 + 4} textAnchor="middle" fill="#101828" fontSize="8" fontWeight="900">{label}</text>
+          </g>
+        ))}
+      </svg>
+      <div className="lp-map-legend">
+        <span><i className="available" />Disponivel</span>
+        <span><i className="reserved" />Reservado</span>
+        <span><i className="sold" />Vendido</span>
+      </div>
+    </div>
+  );
+}
+
+function BuildingShot() {
+  return (
+    <div className="lp-building-shot">
+      <div className="lp-building-visual">
+        <img src="/textures/predio/exterior-glass.jpg" alt="" />
+        <div className="lp-building-card">
+          <strong>Residencial Lago</strong>
+          <span>12 andares · 72 apartamentos</span>
+        </div>
+      </div>
+      <div className="lp-floor-grid">
+        {Array.from({ length: 16 }).map((_, index) => (
+          <span key={index} className={index % 5 === 0 ? 'sold' : index % 4 === 0 ? 'rented' : index % 3 === 0 ? 'reserved' : ''}>
+            {String(index + 1).padStart(2, '0')}
           </span>
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
-/* ─── Feature showcase ────────────────────────────────────────── */
-function Feature({ tag, title, desc, bullets, imgSrc, reverse, sectionId }) {
+function BuildingShot3D() {
+  const previewPredio = {
+    nome: 'Residencial Lago',
+    cor: '#3288e0',
+    footprint_cols: 8,
+    footprint_rows: 5,
+    num_andares: 6,
+    andares: [
+      { numero: 1, stats: { total: 8, disponivel: 3 } },
+      { numero: 2, stats: { total: 8, disponivel: 4 } },
+      { numero: 3, stats: { total: 8, disponivel: 4 } },
+      { numero: 4, stats: { total: 8, disponivel: 4 } },
+      { numero: 5, stats: { total: 8, disponivel: 4 } },
+      { numero: 6, stats: { total: 8, disponivel: 2 } },
+    ],
+  };
+
+  return (
+    <div className="lp-building-shot lp-building-shot-3d">
+      <Building3DView predio={previewPredio} />
+    </div>
+  );
+}
+
+function ModulesSection() {
   const [ref, visible] = useInView();
-
-  const leftStyle = {
-    opacity: visible ? 1 : 0,
-    transform: visible ? 'translateX(0)' : 'translateX(-32px)',
-    transition: 'opacity 0.7s ease 0.05s, transform 0.7s cubic-bezier(0.16,1,0.3,1) 0.05s',
-  };
-  const rightStyle = {
-    opacity: visible ? 1 : 0,
-    transform: visible ? 'translateX(0)' : 'translateX(32px)',
-    transition: 'opacity 0.7s ease 0.15s, transform 0.7s cubic-bezier(0.16,1,0.3,1) 0.15s',
-  };
-
   return (
-    <div ref={ref} id={sectionId} style={{
-      display:'grid',
-      gridTemplateColumns:'1fr 1fr',
-      gap:80, alignItems:'center',
-      padding:'96px max(28px, calc((100vw - 1200px)/2))',
-      background: reverse ? C.light : C.white,
-    }}>
-      {reverse
-        ? <>
-            <div style={leftStyle}><Img src={imgSrc}/></div>
-            <div style={rightStyle}><TextBlock tag={tag} title={title} desc={desc} bullets={bullets}/></div>
-          </>
-        : <>
-            <div style={leftStyle}><TextBlock tag={tag} title={title} desc={desc} bullets={bullets}/></div>
-            <div style={rightStyle}><Img src={imgSrc}/></div>
-          </>
-      }
-    </div>
-  );
-}
-
-function TextBlock({ tag, title, desc, bullets }) {
-  return (
-    <div>
-      <Tag>{tag}</Tag>
-      <h2 style={{ fontSize:'clamp(26px, 3vw, 40px)', fontWeight:800, color: C.navy, margin:'16px 0 16px', lineHeight:1.15, letterSpacing:'-0.02em' }}>
-        {title}
-      </h2>
-      <p style={{ color: C.muted, fontSize:16, lineHeight:1.7, margin:'0 0 28px' }}>{desc}</p>
-      <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:12 }}>
-        {bullets.map(b => (
-          <li key={b} style={{ display:'flex', alignItems:'flex-start', gap:10, color: C.text, fontSize:14 }}>
-            <span style={{
-              width:20, height:20, borderRadius:'50%', background:'rgba(50,136,224,0.12)',
-              display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:1,
-            }}>
-              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6l3 3 5-5" stroke={C.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </span>
-            {b}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function Img({ src }) {
-  return (
-    <div style={{ position:'relative' }}>
-      <div style={{
-        borderRadius:20, overflow:'hidden',
-        boxShadow:'0 24px 64px rgba(0,30,80,0.18)',
-        border:`1px solid ${C.border}`,
-      }}>
-        <img src={src} alt="" style={{ width:'100%', height:380, objectFit:'cover', display:'block' }}/>
+    <section id="funcionalidades" ref={ref} className={`lp-modules ${visible ? 'is-visible' : ''}`}>
+      <div className="lp-section-head">
+        <span className="lp-kicker">FUNCIONALIDADES REAIS</span>
+        <h2>Um sistema para operar estoque, equipe e atendimento sem espalhar informacao.</h2>
+        <p>Os modulos trabalham juntos: cadastro do empreendimento, equipe responsavel, agenda, negociacao e fechamento.</p>
       </div>
-      <div style={{
-        position:'absolute', bottom:-20, right:-20, zIndex:-1,
-        width:120, height:120,
-        backgroundImage:`radial-gradient(${C.blue}44 1.5px, transparent 1.5px)`,
-        backgroundSize:'14px 14px',
-      }}/>
-    </div>
-  );
-}
-
-/* ─── Como Funciona ───────────────────────────────────────────── */
-const STEPS = [
-  {
-    num: '01',
-    icon: (
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M8 12h8M8 8h5M8 16h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-      </svg>
-    ),
-    title: 'Cadastre sua empresa',
-    desc: 'Crie sua conta em minutos. Informe os dados da empresa, configure o perfil e convide sua equipe de vendas.',
-  },
-  {
-    num: '02',
-    icon: (
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-        <path d="M3 6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M7 10l3 3 7-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
-    title: 'Monte seu loteamento',
-    desc: 'Use o editor interativo para desenhar ruas, quadras e lotes. Defina áreas, preços e status de cada unidade.',
-  },
-  {
-    num: '03',
-    icon: (
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/>
-        <path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-      </svg>
-    ),
-    title: 'Gerencie em tempo real',
-    desc: 'Acompanhe disponibilidade, reservas e vendas no dashboard. Atualize o status dos lotes com um único clique.',
-  },
-  {
-    num: '04',
-    icon: (
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-      </svg>
-    ),
-    title: 'Feche mais vendas',
-    desc: 'Relatórios automáticos, histórico de negociações e visão completa do portfólio para vender com mais agilidade.',
-  },
-];
-
-function StepCard({ step, i, visible }) {
-  const [hov, setHov] = useState(false);
-  const active = i === 0 || hov;
-
-  return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        display:'flex', flexDirection:'column', alignItems:'center',
-        textAlign:'center', padding:'0 20px',
-        position:'relative', zIndex:1,
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(28px)',
-        transition: `opacity 0.6s ease ${0.12 * i}s, transform 0.6s cubic-bezier(0.16,1,0.3,1) ${0.12 * i}s`,
-        cursor:'default',
-      }}
-    >
-      <div style={{ position:'relative', marginBottom:28 }}>
-        {active && (
-          <div style={{
-            position:'absolute', inset:-8,
-            borderRadius:'50%',
-            border:`2px solid ${C.blue}33`,
-            animation:'pulse-ring 2s ease-out infinite',
-          }}/>
-        )}
-        <div style={{
-          width:104, height:104, borderRadius:'50%',
-          background: active
-            ? `linear-gradient(135deg, ${C.blue}, #1a5fa8)`
-            : C.light,
-          border: active ? 'none' : `2px solid ${C.border}`,
-          display:'flex', flexDirection:'column',
-          alignItems:'center', justifyContent:'center',
-          boxShadow: active
-            ? '0 16px 40px rgba(50,136,224,0.35)'
-            : '0 4px 16px rgba(0,30,80,0.07)',
-          transition:'all 0.3s cubic-bezier(0.16,1,0.3,1)',
-          color: active ? '#fff' : C.blue,
-        }}>
-          {step.icon}
-          <span style={{
-            fontSize:11, fontWeight:800, letterSpacing:'0.05em',
-            color: active ? 'rgba(255,255,255,0.7)' : C.muted,
-            marginTop:4, transition:'color 0.3s',
-          }}>
-            PASSO {step.num}
-          </span>
+      <div className="lp-module-layout">
+        <div className="lp-module-grid">
+          {moduleCards.map((item) => (
+            <article className="lp-module-card" key={item.title}>
+              <span>{item.meta}</span>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+            </article>
+          ))}
         </div>
-      </div>
-
-      <h3 style={{ fontSize:17, fontWeight:800, color: C.navy, margin:'0 0 10px', lineHeight:1.3 }}>
-        {step.title}
-      </h3>
-      <p style={{ fontSize:14, color: C.muted, lineHeight:1.65, margin:0 }}>
-        {step.desc}
-      </p>
-    </div>
-  );
-}
-
-function ComoFunciona() {
-  const [ref, visible] = useInView(0.1);
-
-  return (
-    <section id="como-funciona" ref={ref} style={{
-      padding:'100px max(28px, calc((100vw - 1200px)/2))',
-      background: C.white,
-      position:'relative', overflow:'hidden',
-    }}>
-      <div style={{
-        position:'absolute', top:-120, right:-120, width:500, height:500,
-        borderRadius:'50%',
-        background:'radial-gradient(circle, rgba(50,136,224,0.06) 0%, transparent 70%)',
-        pointerEvents:'none',
-      }}/>
-
-      {/* cabeçalho */}
-      <div style={{
-        textAlign:'center', marginBottom:72,
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(24px)',
-        transition:'opacity 0.7s ease 0s, transform 0.7s cubic-bezier(0.16,1,0.3,1) 0s',
-      }}>
-        <Tag>COMO FUNCIONA</Tag>
-        <h2 style={{
-          fontSize:'clamp(28px, 3.5vw, 44px)', fontWeight:800,
-          color: C.navy, margin:'16px 0 14px', letterSpacing:'-0.02em',
-        }}>
-          Do cadastro ao fechamento<br/>em 4 passos simples
-        </h2>
-        <p style={{ color: C.muted, fontSize:16, maxWidth:500, margin:'0 auto', lineHeight:1.65 }}>
-          Sem treinamentos complexos. Em menos de uma tarde sua empresa já está operando com o Terreno.
-        </p>
-      </div>
-
-      {/* steps grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:0, position:'relative' }}>
-        <div style={{
-          position:'absolute',
-          top:52, left:'12.5%', right:'12.5%',
-          height:2,
-          background:`linear-gradient(90deg, ${C.blue}33, ${C.blue}99, ${C.blue}33)`,
-          zIndex:0,
-          opacity: visible ? 1 : 0,
-          transition:'opacity 0.8s ease 0.3s',
-        }}/>
-
-        {STEPS.map((step, i) => (
-          <StepCard key={step.num} step={step} i={i} visible={visible} />
-        ))}
-      </div>
-
-      {/* CTA */}
-      <div style={{
-        textAlign:'center', marginTop:64,
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(16px)',
-        transition:'opacity 0.6s ease 0.55s, transform 0.6s ease 0.55s',
-      }}>
-        <Btn href="/cadastro" primary large>Começar agora — é grátis →</Btn>
-        <p style={{ marginTop:14, fontSize:13, color: C.muted }}>
-          Sem cartão de crédito · Cancele quando quiser
-        </p>
+        <div className="lp-module-panel" aria-hidden="true">
+          <div className="lp-module-panel-head">
+            <strong>Agenda da equipe</strong>
+            <span>Hoje</span>
+          </div>
+          {[
+            ['09:00', 'Visita Casa Jardim', 'Ronaldo'],
+            ['11:30', 'Proposta lote Q12', 'Marina'],
+            ['14:00', 'Contrato apto 204', 'Equipe'],
+          ].map(([time, task, owner]) => (
+            <div className="lp-agenda-row" key={task}>
+              <b>{time}</b>
+              <span>{task}</span>
+              <em>{owner}</em>
+            </div>
+          ))}
+          <div className="lp-module-stock">
+            <div><span>Loteamentos</span><strong>12</strong></div>
+            <div><span>Casas</span><strong>36</strong></div>
+            <div><span>Predios</span><strong>8</strong></div>
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-/* ─── Stats ───────────────────────────────────────────────────── */
-const STATS = [
-  { num: 200, display: n => `${n}+`,       label: 'Imobiliárias cadastradas' },
-  { num: 50,  display: n => `${n}.000+`,   label: 'Lotes gerenciados' },
-  { num: 2,   display: n => `R$ ${n} bi+`, label: 'Em vendas processadas' },
-  { num: 98,  display: n => `${n}%`,       label: 'Taxa de satisfação' },
-];
-
-function StatItem({ num, display, label, visible, delay }) {
-  const count = useCounter(num, 1800, visible);
+function FeatureRow({ item, index }) {
+  const [ref, visible] = useInView();
   return (
-    <div style={{
-      opacity: visible ? 1 : 0,
-      transform: visible ? 'translateY(0)' : 'translateY(20px)',
-      transition: `opacity 0.6s ease ${delay}s, transform 0.6s ease ${delay}s`,
-    }}>
-      <div style={{ fontSize:'clamp(32px, 4vw, 48px)', fontWeight:900, color:'#fff', letterSpacing:'-0.03em', lineHeight:1 }}>
-        {display(count)}
+    <section ref={ref} className={`lp-feature ${index % 2 ? 'is-reverse' : ''} ${visible ? 'is-visible' : ''}`}>
+      <div className="lp-feature-copy">
+        <span className="lp-kicker">{item.eyebrow}</span>
+        <h2>{item.title}</h2>
+        <p>{item.text}</p>
+        <div className="lp-point-grid">
+          {item.points.map((point) => (
+            <span key={point}><CheckIcon />{point}</span>
+          ))}
+        </div>
       </div>
-      <div style={{ fontSize:14, color:'rgba(255,255,255,0.45)', marginTop:8, fontWeight:500 }}>{label}</div>
-    </div>
-  );
-}
-
-function Stats() {
-  const [ref, visible] = useInView(0.2);
-  return (
-    <section ref={ref} style={{
-      background:`linear-gradient(135deg, ${C.navy} 0%, ${C.navyLt} 100%)`,
-      padding:'80px max(28px, calc((100vw - 1200px)/2))',
-      position:'relative', overflow:'hidden',
-    }}>
-      <div style={{
-        position:'absolute', top:-80, right:-80, width:400, height:400,
-        borderRadius:'50%', background:'rgba(50,136,224,0.07)', pointerEvents:'none',
-      }}/>
-      <div style={{
-        display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',
-        gap:40, textAlign:'center',
-      }}>
-        {STATS.map(({ num, display, label }, i) => (
-          <StatItem key={label} num={num} display={display} label={label} visible={visible} delay={i * 0.1} />
-        ))}
+      <div className="lp-feature-media">
+        {item.visual}
       </div>
     </section>
-  );
-}
-
-/* ─── Preços ──────────────────────────────────────────────────── */
-const PLANS = [
-  {
-    name: 'Inicial',
-    price: '600',
-    desc: 'Ideal para loteadoras que estão começando e querem organizar sua operação.',
-    features: [
-      '1 loteamento ativo',
-      'Até 200 lotes cadastrados',
-      'Editor de mapas completo',
-      'Dashboard de vendas',
-      '2 usuários',
-      'Suporte por e-mail',
-    ],
-    cta: 'Começar agora',
-    highlight: false,
-  },
-  {
-    name: 'Profissional',
-    price: '1.200',
-    desc: 'Para empresas em crescimento que gerenciam múltiplos empreendimentos.',
-    features: [
-      '5 loteamentos ativos',
-      'Até 1.000 lotes cadastrados',
-      'Editor de mapas avançado',
-      'Dashboard + relatórios PDF',
-      '10 usuários',
-      'Suporte prioritário',
-      'Integração com CRM',
-    ],
-    cta: 'Escolher Profissional',
-    highlight: true,
-    badge: 'Mais popular',
-  },
-  {
-    name: 'Empresarial',
-    price: '2.400',
-    desc: 'Solução completa para grandes loteadoras e construtoras com alto volume.',
-    features: [
-      'Loteamentos ilimitados',
-      'Lotes ilimitados',
-      'Todas as funcionalidades',
-      'Relatórios personalizados',
-      'Usuários ilimitados',
-      'Gerente de conta dedicado',
-      'SLA 99,9% de disponibilidade',
-      'API de integração',
-    ],
-    cta: 'Falar com vendas',
-    highlight: false,
-  },
-];
-
-function Check() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:1 }}>
-      <circle cx="8" cy="8" r="8" fill="rgba(50,136,224,0.12)"/>
-      <path d="M4.5 8l2.5 2.5 4.5-4.5" stroke={C.blue} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function PricingCard({ plan, i, visible }) {
-  const [hov, setHov] = useState(false);
-
-  const baseTransform = plan.highlight ? 'scale(1.04)' : 'scale(1)';
-  const hovTransform  = plan.highlight ? 'scale(1.07)' : 'translateY(-6px) scale(1.02)';
-  const entryTransform = 'translateY(28px) scale(0.97)';
-
-  return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        background: plan.highlight ? C.navy : C.white,
-        borderRadius:24,
-        padding:'36px 32px',
-        border: plan.highlight ? 'none' : `1px solid ${C.border}`,
-        position:'relative',
-        opacity: visible ? 1 : 0,
-        transform: !visible ? entryTransform : hov ? hovTransform : baseTransform,
-        transition: `opacity 0.6s ease ${i * 0.12}s, transform ${hov ? '0.25s' : `0.6s ease ${i * 0.12}s`} cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s`,
-        boxShadow: hov
-          ? (plan.highlight ? '0 44px 100px rgba(10,22,62,0.5)' : '0 20px 60px rgba(0,30,80,0.16)')
-          : (plan.highlight ? '0 32px 80px rgba(10,22,62,0.35)' : '0 4px 24px rgba(0,30,80,0.07)'),
-        cursor:'default',
-      }}
-    >
-      {plan.badge && (
-        <div style={{
-          position:'absolute', top:-14, left:'50%', transform:'translateX(-50%)',
-          background: C.blue,
-          color:'#fff', fontSize:11, fontWeight:800, letterSpacing:'0.08em',
-          padding:'5px 18px', borderRadius:999,
-          boxShadow:'0 4px 16px rgba(50,136,224,0.5)',
-          whiteSpace:'nowrap',
-        }}>
-          {plan.badge.toUpperCase()}
-        </div>
-      )}
-
-      <div style={{ marginBottom:24 }}>
-        <div style={{
-          fontSize:12, fontWeight:800, letterSpacing:'0.1em',
-          color: plan.highlight ? 'rgba(255,255,255,0.5)' : C.muted,
-          marginBottom:8,
-        }}>
-          {plan.name.toUpperCase()}
-        </div>
-        <div style={{ display:'flex', alignItems:'flex-end', gap:4, marginBottom:12 }}>
-          <span style={{ fontSize:13, fontWeight:600, color: plan.highlight ? 'rgba(255,255,255,0.6)' : C.muted, marginBottom:6 }}>R$</span>
-          <span style={{ fontSize:'clamp(38px, 4vw, 52px)', fontWeight:900, lineHeight:1, letterSpacing:'-0.03em', color: plan.highlight ? '#fff' : C.navy }}>
-            {plan.price}
-          </span>
-          <span style={{ fontSize:14, color: plan.highlight ? 'rgba(255,255,255,0.45)' : C.muted, marginBottom:8 }}>/mês</span>
-        </div>
-        <p style={{ fontSize:14, color: plan.highlight ? 'rgba(255,255,255,0.55)' : C.muted, lineHeight:1.6, margin:0 }}>
-          {plan.desc}
-        </p>
-      </div>
-
-      <div style={{ height:1, background: plan.highlight ? 'rgba(255,255,255,0.1)' : C.border, marginBottom:24 }}/>
-
-      <ul style={{ listStyle:'none', padding:0, margin:'0 0 32px', display:'flex', flexDirection:'column', gap:12 }}>
-        {plan.features.map(f => (
-          <li key={f} style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-            {plan.highlight
-              ? (
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:1 }}>
-                  <circle cx="8" cy="8" r="8" fill="rgba(255,255,255,0.12)"/>
-                  <path d="M4.5 8l2.5 2.5 4.5-4.5" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )
-              : <Check/>
-            }
-            <span style={{ fontSize:14, color: plan.highlight ? 'rgba(255,255,255,0.8)' : C.text, lineHeight:1.5 }}>{f}</span>
-          </li>
-        ))}
-      </ul>
-
-      <a href="/cadastro" style={{
-        display:'block', textAlign:'center',
-        padding:'14px 24px', borderRadius:12,
-        fontWeight:700, fontSize:15,
-        textDecoration:'none',
-        transition:'all 0.18s',
-        background: plan.highlight ? C.blue : 'transparent',
-        color: plan.highlight ? '#fff' : C.blue,
-        border: plan.highlight ? 'none' : `2px solid ${C.blue}`,
-        boxShadow: plan.highlight ? '0 6px 24px rgba(50,136,224,0.45)' : 'none',
-      }}>
-        {plan.cta}
-      </a>
-    </div>
   );
 }
 
 function Pricing() {
-  const [ref, visible] = useInView(0.1);
-  return (
-    <section id="precos" ref={ref} style={{ padding:'100px max(28px, calc((100vw - 1200px)/2))', background: C.light }}>
-      <div style={{
-        textAlign:'center', marginBottom:64,
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(24px)',
-        transition:'opacity 0.7s ease 0s, transform 0.7s cubic-bezier(0.16,1,0.3,1) 0s',
-      }}>
-        <Tag>PLANOS E PREÇOS</Tag>
-        <h2 style={{ fontSize:'clamp(28px, 3.5vw, 44px)', fontWeight:800, color: C.navy, margin:'16px 0 14px', letterSpacing:'-0.02em' }}>
-          Invista no crescimento<br/>da sua imobiliária
-        </h2>
-        <p style={{ color: C.muted, fontSize:16, maxWidth:480, margin:'0 auto', lineHeight:1.6 }}>
-          Planos flexíveis para cada tamanho de operação. Sem taxa de setup, cancele quando quiser.
-        </p>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:24, alignItems:'start' }}>
-        {PLANS.map((plan, i) => (
-          <PricingCard key={plan.name} plan={plan} i={i} visible={visible} />
-        ))}
-      </div>
-
-      <p style={{
-        textAlign:'center', marginTop:40, color: C.muted, fontSize:13,
-        opacity: visible ? 1 : 0,
-        transition:'opacity 0.6s ease 0.5s',
-      }}>
-        Todos os planos incluem 14 dias grátis · Sem cartão de crédito para começar
-      </p>
-    </section>
-  );
-}
-
-/* ─── CTA final ───────────────────────────────────────────────── */
-function CtaFinal() {
+  const [planos, setPlanos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [ref, visible] = useInView();
 
-  const appear = (delay) => ({
-    opacity: visible ? 1 : 0,
-    transform: visible ? 'translateY(0)' : 'translateY(20px)',
-    transition: `opacity 0.6s ease ${delay}s, transform 0.6s cubic-bezier(0.16,1,0.3,1) ${delay}s`,
-  });
+  useEffect(() => {
+    let alive = true;
+    getPlanos()
+      .then((data) => {
+        if (!alive) return;
+        setPlanos(Array.isArray(data) ? data : []);
+        setError('');
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setError(err.message || 'Nao foi possivel carregar os planos.');
+      })
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, []);
 
   return (
-    <section ref={ref} style={{ position:'relative', overflow:'hidden' }}>
-      <img src={IMG.aerial} alt="" style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }}/>
-      <div style={{ position:'absolute', inset:0, background:'rgba(8,15,30,0.88)' }}/>
-      <div style={{
-        position:'relative', zIndex:1,
-        padding:'100px max(28px, calc((100vw - 760px)/2))',
-        textAlign:'center',
-      }}>
-        <div style={appear(0)}><Tag>COMECE HOJE</Tag></div>
-        <h2 style={{ fontSize:'clamp(30px, 4vw, 52px)', fontWeight:900, color:'#fff', margin:'20px 0 16px', lineHeight:1.1, letterSpacing:'-0.03em', ...appear(0.1) }}>
-          Leve sua imobiliária<br/>ao próximo nível
-        </h2>
-        <p style={{ color:'rgba(255,255,255,0.55)', fontSize:17, lineHeight:1.7, margin:'0 0 40px', maxWidth:520, marginLeft:'auto', marginRight:'auto', ...appear(0.2) }}>
-          Crie sua conta em minutos, cadastre sua empresa e comece a gerenciar seus loteamentos com profissionalismo.
-        </p>
-        <div style={{ display:'flex', gap:14, justifyContent:'center', flexWrap:'wrap', ...appear(0.3) }}>
-          <Btn href="/cadastro" primary large>Criar conta grátis →</Btn>
-          <Btn href={LOGIN_URL} light large>Já tenho uma conta</Btn>
+    <section id="planos" ref={ref} className={`lp-pricing ${visible ? 'is-visible' : ''}`}>
+      <div className="lp-section-head">
+        <span className="lp-kicker">PLANOS DO BANCO</span>
+        <h2>Os planos exibidos aqui sao os planos ativos cadastrados no admin.</h2>
+        <p>Preco, limites, destaque, cor e recursos vem de <code>/assinaturas/planos</code>.</p>
+      </div>
+
+      {loading && <div className="lp-plan-state">Carregando planos cadastrados...</div>}
+      {!loading && error && <div className="lp-plan-state is-error">{error}</div>}
+      {!loading && !error && planos.length === 0 && (
+        <div className="lp-plan-state">Nenhum plano ativo cadastrado no momento.</div>
+      )}
+      {!loading && !error && planos.length > 0 && (
+        <div className="lp-plan-grid">
+          {planos.map((plano) => (
+            <article key={plano.id} className={`lp-plan ${plano.destaque ? 'is-featured' : ''}`} style={{ '--plan-color': plano.cor || '#3288e0' }}>
+              {plano.destaque && <span className="lp-plan-badge">Recomendado</span>}
+              <div>
+                <span className="lp-plan-name">{plano.nome}</span>
+                <div className="lp-plan-price">
+                  <strong>{fmtBRL(plano.preco_mensal)}</strong>
+                  <span>/mes</span>
+                </div>
+                {Number(plano.preco_anual) > 0 && <p className="lp-plan-annual">ou {fmtBRL(plano.preco_anual)}/ano</p>}
+                {plano.descricao && <p className="lp-plan-desc">{plano.descricao}</p>}
+              </div>
+              <div className="lp-plan-limits">
+                <span>{plano.max_usuarios != null ? `${plano.max_usuarios} usuarios` : 'Usuarios ilimitados'}</span>
+                <span>{plano.max_loteamentos != null ? `${plano.max_loteamentos} loteamentos` : 'Loteamentos ilimitados'}</span>
+                <span>{plano.max_predios != null ? `${plano.max_predios} predios` : 'Predios ilimitados'}</span>
+              </div>
+              {Array.isArray(plano.recursos) && plano.recursos.length > 0 && (
+                <ul>
+                  {plano.recursos.map((recurso, index) => (
+                    <li key={`${recurso}-${index}`}><CheckIcon />{recurso}</li>
+                  ))}
+                </ul>
+              )}
+              <a className="lp-btn lp-btn-primary lp-btn-full" href="/cadastro">Escolher plano</a>
+            </article>
+          ))}
         </div>
+      )}
+    </section>
+  );
+}
+
+function CTA() {
+  return (
+    <section className="lp-cta">
+      <div>
+        <span className="lp-kicker">PRONTO PARA OPERAR</span>
+        <h2>Troque planilhas soltas por um sistema onde o comercial trabalha no dado certo.</h2>
+      </div>
+      <div className="lp-cta-actions">
+        <a className="lp-btn lp-btn-primary lp-btn-lg" href="/cadastro">Criar empresa</a>
+        <a className="lp-btn lp-btn-dark lp-btn-lg" href={LOGIN_URL}>Ja tenho conta</a>
       </div>
     </section>
   );
 }
 
-/* ─── Footer ──────────────────────────────────────────────────── */
 function Footer() {
   return (
-    <footer style={{ background:'#060d1a', padding:'64px max(28px, calc((100vw - 1200px)/2)) 32px' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr', gap:40, marginBottom:48 }}>
-        <div>
-          <Logo light/>
-          <p style={{ color:'rgba(255,255,255,0.35)', fontSize:14, lineHeight:1.7, margin:'16px 0 0', maxWidth:280 }}>
-            Sistema completo para gestão de loteamentos, lotes e vendas imobiliárias.
-          </p>
-        </div>
-        {[
-          ['Produto', ['Funcionalidades','Preços','Integrações','Novidades']],
-          ['Empresa', ['Sobre nós','Blog','Carreiras','Contato']],
-          ['Legal', ['Termos de uso','Privacidade','Cookies']],
-        ].map(([title, links]) => (
-          <div key={title}>
-            <div style={{ color:'rgba(255,255,255,0.5)', fontSize:11, fontWeight:800, letterSpacing:'0.1em', marginBottom:16 }}>{title.toUpperCase()}</div>
-            {links.map(l => (
-              <div key={l} style={{ marginBottom:10 }}>
-                <span style={{ color:'rgba(255,255,255,0.3)', fontSize:14, cursor:'pointer', fontWeight:500 }}>{l}</span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div style={{ borderTop:'1px solid rgba(255,255,255,0.07)', paddingTop:28, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
-        <span style={{ color:'rgba(255,255,255,0.2)', fontSize:13 }}>© {new Date().getFullYear()} Terreno · Todos os direitos reservados</span>
-        <div style={{ display:'flex', gap:20 }}>
-          {[['Entrar',LOGIN_URL],['Cadastrar','/cadastro']].map(([l,h]) => (
-            <a key={l} href={h} style={{ color:'rgba(255,255,255,0.3)', fontSize:13, textDecoration:'none', fontWeight:500 }}>{l}</a>
-          ))}
-        </div>
+    <footer className="lp-footer">
+      <Logo light />
+      <span>© {new Date().getFullYear()} ImobSys. Sistema imobiliario.</span>
+      <div>
+        <a href={LOGIN_URL}>Entrar</a>
+        <a href="/cadastro">Cadastrar</a>
       </div>
     </footer>
   );
 }
 
-/* ─── Page ────────────────────────────────────────────────────── */
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M3 8.5l3 3 7-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function LandingPage() {
-  const [scrolled, setScrolled] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const ref = useRef(null);
+  const [scrolled, setScrolled] = useState(false);
+  const scrollRef = useRef(null);
 
   const openLogin = () => {
     setShowLogin(true);
-    if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     url.searchParams.set('login', '1');
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
@@ -1247,71 +607,657 @@ export default function LandingPage() {
 
   const closeLogin = () => {
     setShowLogin(false);
-    if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     url.searchParams.delete('login');
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   };
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const fn = () => setScrolled(el.scrollTop > 40);
-    el.addEventListener('scroll', fn, { passive: true });
-    return () => el.removeEventListener('scroll', fn);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('login') === '1' || params.get('login') === 'true') setShowLogin(true);
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('login') === '1' || params.get('login') === 'true') {
-      setShowLogin(true);
-    }
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => setScrolled(el.scrollTop > 24);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
   return (
-    <div ref={ref} style={{
-      position:'fixed', inset:0, overflowY:'auto', overflowX:'hidden',
-      fontFamily:"'Manrope', system-ui, sans-serif",
-      WebkitFontSmoothing:'antialiased',
-      color: C.text,
-    }}>
-      <style>{GLOBAL_CSS}</style>
-      {showLogin && <LoginModal onClose={closeLogin}/>}
-      <Navbar scrolled={scrolled} containerRef={ref} onLogin={openLogin}/>
-      <Hero/>
-      <SocialProof/>
-      <ComoFunciona/>
-      <Feature
-        sectionId="funcionalidades"
-        tag="EDITOR DE MAPAS"
-        title="Visualize e edite seus loteamentos em tempo real"
-        desc="Nosso editor SVG interativo permite que você desenhe loteamentos do zero ou importe plantas existentes, defina lotes com precisão e publique mapas prontos para sua equipe de vendas."
-        bullets={[
-          'Ferramentas de desenho: polígonos, ruas, praças e landmarks',
-          'Edição de propriedades de cada lote com clique',
-          'Visualização por status: disponível, reservado ou vendido',
-          'Exportação e compartilhamento facilitados',
-        ]}
-        imgSrc={IMG.map}
-      />
-      <Feature
-        tag="GESTÃO COMPLETA"
-        title="Controle total do seu portfólio imobiliário"
-        desc="Dashboard com métricas em tempo real, histórico de vendas, relatórios de desempenho e tudo que você precisa para tomar decisões com dados — não com intuição."
-        bullets={[
-          'Métricas de disponibilidade, reservas e receita',
-          'Ranking de corretores e performance de vendas',
-          'Histórico completo de cada transação',
-          'Cadastro multi-empresa com controle de acesso',
-        ]}
-        imgSrc={IMG.office}
-        reverse
-      />
-      <Stats/>
-      <Pricing/>
-      <CtaFinal/>
-      <Footer/>
+    <div ref={scrollRef} className="lp-page">
+      <style>{LANDING_CSS}</style>
+      {showLogin && <LoginModal onClose={closeLogin} />}
+      <Navbar scrolled={scrolled} containerRef={scrollRef} onLogin={openLogin} />
+      <Hero />
+      <section className="lp-proof">
+        <span>Fluxos reais do sistema</span>
+        <strong>Loteamentos</strong>
+        <strong>Casas</strong>
+        <strong>Predios</strong>
+        <strong>Clientes</strong>
+        <strong>Equipe</strong>
+        <strong>Agenda</strong>
+        <strong>Vendas</strong>
+        <strong>Locacoes</strong>
+        <strong>Assinaturas</strong>
+      </section>
+      <ModulesSection />
+      {featureRows.map((item, index) => <FeatureRow key={item.eyebrow} item={item} index={index} />)}
+      <Pricing />
+      <CTA />
+      <Footer />
     </div>
   );
 }
+
+const LANDING_CSS = `
+  .lp-page {
+    position: fixed;
+    inset: 0;
+    overflow: auto;
+    background: #f6f8fb;
+    color: #101828;
+    font-family: 'Manrope', system-ui, sans-serif;
+  }
+  .lp-page * { box-sizing: border-box; }
+  .lp-page a { color: inherit; }
+  .lp-nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    min-height: 70px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 18px;
+    padding: 14px max(22px, calc((100vw - 1180px) / 2));
+    color: #ffffff;
+    transition: background .2s, border-color .2s, color .2s;
+    border-bottom: 1px solid transparent;
+  }
+  .lp-nav-scrolled {
+    background: rgba(255,255,255,.94);
+    color: #101828;
+    border-color: #e4e7ec;
+    backdrop-filter: blur(16px);
+  }
+  .lp-logo {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    text-decoration: none;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 0;
+    color: inherit;
+  }
+  .lp-logo span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+  }
+  .lp-nav-links { display: flex; align-items: center; gap: 4px; justify-content: center; }
+  .lp-nav-links button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 9px 12px;
+    border-radius: 7px;
+  }
+  .lp-nav-links button:hover { background: rgba(255,255,255,.14); }
+  .lp-nav-scrolled .lp-nav-links button:hover { background: #f2f4f7; }
+  .lp-nav-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .lp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 9px 16px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    text-decoration: none;
+    font-weight: 800;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform .16s, box-shadow .16s, background .16s, border-color .16s;
+  }
+  .lp-btn:hover { transform: translateY(-1px); }
+  .lp-btn:disabled { cursor: wait; opacity: .7; transform: none; }
+  .lp-btn-lg { min-height: 48px; padding: 12px 20px; font-size: 14px; }
+  .lp-btn-full { width: 100%; }
+  .lp-btn-primary { background: #3288e0; color: #fff; box-shadow: 0 12px 28px rgba(50,136,224,.24); }
+  .lp-btn-primary:hover { background: #2579ce; }
+  .lp-btn-dark { background: #101828; color: #fff; border-color: #101828; }
+  .lp-btn-ghost { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.22); color: inherit; }
+  .lp-nav-scrolled .lp-btn-ghost { background: #fff; border-color: #d0d5dd; color: #344054; }
+  .lp-hero {
+    min-height: 92vh;
+    padding: 118px max(22px, calc((100vw - 1180px) / 2)) 70px;
+    margin-top: -70px;
+    display: grid;
+    grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+    gap: 46px;
+    align-items: center;
+    background:
+      linear-gradient(110deg, rgba(9, 17, 32, .92) 0%, rgba(12, 22, 41, .84) 46%, rgba(12, 22, 41, .35) 100%),
+      url('/textures/terreno.jpeg') center/cover;
+    color: #fff;
+  }
+  .lp-kicker {
+    display: inline-flex;
+    color: #3288e0;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .lp-hero h1 {
+    margin: 16px 0 18px;
+    font-size: clamp(40px, 5.4vw, 72px);
+    line-height: .97;
+    letter-spacing: 0;
+    font-weight: 900;
+    max-width: 780px;
+  }
+  .lp-hero p {
+    max-width: 620px;
+    margin: 0;
+    color: rgba(255,255,255,.74);
+    font-size: 17px;
+    line-height: 1.72;
+  }
+  .lp-hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+  .lp-trust-row { display: flex; flex-wrap: wrap; gap: 12px 18px; margin-top: 26px; }
+  .lp-trust-row span, .lp-point-grid span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: inherit;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .lp-trust-row svg, .lp-point-grid svg { color: #22c55e; }
+  .lp-hero-media { min-width: 0; }
+  .lp-product-shell {
+    display: grid;
+    grid-template-columns: 156px minmax(0, 1fr);
+    min-height: 500px;
+    background: #fff;
+    color: #101828;
+    border: 1px solid rgba(255,255,255,.24);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 34px 90px rgba(0,0,0,.34);
+  }
+  .lp-product-shell aside {
+    background: #091120;
+    color: rgba(255,255,255,.72);
+    padding: 18px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .lp-shell-logo {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: #3288e0;
+    color: #fff;
+    font-weight: 900;
+    margin-bottom: 12px;
+  }
+  .lp-product-shell aside span {
+    padding: 9px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .lp-product-shell aside .is-active { background: rgba(255,255,255,.12); color: #fff; }
+  .lp-product-shell main { min-width: 0; background: #f4f7fb; display: flex; flex-direction: column; }
+  .lp-shell-top {
+    height: 52px;
+    border-bottom: 1px solid #e4e7ec;
+    background: rgba(255,255,255,.9);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    font-weight: 900;
+  }
+  .lp-shell-top div { display: flex; gap: 6px; }
+  .lp-shell-top i { width: 8px; height: 8px; border-radius: 50%; background: #98a2b3; display: block; }
+  .lp-dashboard-shot { padding: 18px; display: grid; gap: 14px; }
+  .lp-dashboard-shot.is-large { padding: 22px; gap: 16px; }
+  .lp-shot-header, .lp-panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+  .lp-shot-header span, .lp-mini-grid span, .lp-sale-row span, .lp-plan-annual {
+    color: #667085;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .lp-shot-header strong { display: block; font-size: 24px; letter-spacing: 0; }
+  .lp-shot-header button {
+    border: 1px solid #d0d5dd;
+    background: #fff;
+    color: #344054;
+    border-radius: 7px;
+    padding: 7px 12px;
+    font-weight: 800;
+  }
+  .lp-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .lp-mini-grid div, .lp-sales-panel, .lp-plan, .lp-plan-state {
+    background: #fff;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+  }
+  .lp-mini-grid div { padding: 14px; min-width: 0; }
+  .lp-mini-grid strong { display: block; font-size: 20px; line-height: 1.1; margin-top: 5px; }
+  .lp-mini-grid em { display: block; color: #3288e0; font-size: 11px; font-style: normal; font-weight: 900; margin-top: 8px; }
+  .lp-sales-panel { padding: 16px; }
+  .lp-panel-head { margin-bottom: 10px; }
+  .lp-panel-head span { color: #3288e0; font-weight: 900; }
+  .lp-sale-row {
+    display: grid;
+    grid-template-columns: 90px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 0;
+    border-top: 1px solid #eef2f6;
+    font-size: 13px;
+  }
+  .lp-sale-row strong { font-size: 13px; }
+  .lp-proof {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 14px 30px;
+    padding: 28px 22px;
+    background: #fff;
+    border-bottom: 1px solid #e4e7ec;
+  }
+  .lp-proof span { color: #667085; font-weight: 800; }
+  .lp-proof strong { color: #101828; }
+  .lp-modules {
+    padding: 86px max(22px, calc((100vw - 1180px) / 2));
+    background: #f6f8fb;
+    border-bottom: 1px solid #e4e7ec;
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .45s, transform .45s;
+  }
+  .lp-modules.is-visible { opacity: 1; transform: none; }
+  .lp-module-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+    gap: 22px;
+    align-items: stretch;
+  }
+  .lp-module-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .lp-module-card {
+    min-width: 0;
+    background: #fff;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+    padding: 18px;
+    box-shadow: 0 14px 36px rgba(16,24,40,.05);
+  }
+  .lp-module-card span {
+    color: #3288e0;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  .lp-module-card h3 {
+    margin: 10px 0 8px;
+    color: #101828;
+    font-size: 18px;
+    line-height: 1.18;
+    letter-spacing: 0;
+  }
+  .lp-module-card p {
+    margin: 0;
+    color: #667085;
+    line-height: 1.58;
+    font-size: 13.5px;
+  }
+  .lp-module-panel {
+    background: #091120;
+    color: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    box-shadow: 0 22px 60px rgba(9,17,32,.18);
+  }
+  .lp-module-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 6px;
+  }
+  .lp-module-panel-head strong { font-size: 20px; }
+  .lp-module-panel-head span {
+    color: #9ecbff;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .lp-agenda-row {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px;
+    background: rgba(255,255,255,.06);
+  }
+  .lp-agenda-row b { color: #9ecbff; font-size: 13px; }
+  .lp-agenda-row span { min-width: 0; font-size: 13px; font-weight: 800; }
+  .lp-agenda-row em {
+    color: rgba(255,255,255,.68);
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 800;
+  }
+  .lp-module-stock {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .lp-module-stock div {
+    background: #fff;
+    color: #101828;
+    border-radius: 8px;
+    padding: 13px;
+  }
+  .lp-module-stock span {
+    display: block;
+    color: #667085;
+    font-size: 11px;
+    font-weight: 800;
+    margin-bottom: 5px;
+  }
+  .lp-module-stock strong { font-size: 24px; line-height: 1; }
+  .lp-feature {
+    display: grid;
+    grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr);
+    gap: 48px;
+    align-items: center;
+    padding: 92px max(22px, calc((100vw - 1180px) / 2));
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .45s, transform .45s;
+  }
+  .lp-feature.is-visible { opacity: 1; transform: none; }
+  .lp-feature.is-reverse .lp-feature-copy { order: 2; }
+  .lp-feature h2, .lp-section-head h2, .lp-cta h2 {
+    margin: 12px 0 14px;
+    color: #101828;
+    font-size: clamp(28px, 3.5vw, 46px);
+    line-height: 1.05;
+    letter-spacing: 0;
+    font-weight: 900;
+  }
+  .lp-feature p, .lp-section-head p {
+    margin: 0;
+    color: #667085;
+    font-size: 16px;
+    line-height: 1.72;
+  }
+  .lp-point-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .lp-feature-media {
+    min-width: 0;
+    background: #fff;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 20px 60px rgba(16,24,40,.08);
+  }
+  .lp-map-shot svg {
+    width: 100%;
+    display: block;
+    border-radius: 7px;
+    overflow: hidden;
+    background: #78ad3c;
+  }
+  .lp-lot-available { fill: rgba(210,222,205,.82); stroke: rgba(255,255,255,.62); stroke-width: 1; }
+  .lp-lot-reserved { fill: rgba(234,205,18,.86); stroke: rgba(180,83,9,.46); stroke-width: 1; }
+  .lp-lot-sold { fill: rgba(212,94,54,.82); stroke: rgba(185,28,28,.42); stroke-width: 1; }
+  .lp-map-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 14px 4px 2px; color: #475467; font-size: 12px; font-weight: 800; }
+  .lp-map-legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .lp-map-legend i { width: 10px; height: 10px; border-radius: 3px; display: block; }
+  .lp-map-legend .available { background: #22c55e; }
+  .lp-map-legend .reserved { background: #f59e0b; }
+  .lp-map-legend .sold { background: #ef4444; }
+  .lp-building-shot { display: grid; grid-template-columns: 1.1fr .9fr; gap: 14px; }
+  .lp-building-shot-3d {
+    display: block;
+    padding: 4px 0 0;
+  }
+  .lp-building-shot-3d .building-3d-wrap {
+    width: 100%;
+  }
+  .lp-building-shot-3d .building-3d-svg {
+    width: 100%;
+    height: auto;
+    margin: 0 auto;
+  }
+  .lp-building-shot-3d .b3d-legend {
+    justify-content: center;
+  }
+  .lp-building-visual { position: relative; min-height: 280px; border-radius: 7px; overflow: hidden; background: #101828; }
+  .lp-building-visual img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .86; }
+  .lp-building-card {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    background: rgba(255,255,255,.93);
+    border-radius: 8px;
+    padding: 12px;
+    display: grid;
+    gap: 3px;
+  }
+  .lp-building-card span { color: #667085; font-size: 12px; font-weight: 800; }
+  .lp-floor-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .lp-floor-grid span {
+    min-height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 7px;
+    background: #ecfdf3;
+    color: #15803d;
+    font-weight: 900;
+    font-size: 12px;
+    border: 1px solid #bbf7d0;
+  }
+  .lp-floor-grid .sold { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+  .lp-floor-grid .reserved { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+  .lp-floor-grid .rented { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
+  .lp-pricing {
+    padding: 96px max(22px, calc((100vw - 1180px) / 2));
+    background: #fff;
+    border-top: 1px solid #e4e7ec;
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .45s, transform .45s;
+  }
+  .lp-pricing.is-visible { opacity: 1; transform: none; }
+  .lp-section-head { max-width: 720px; margin-bottom: 34px; }
+  .lp-section-head code { color: #344054; background: #f2f4f7; border: 1px solid #e4e7ec; padding: 2px 6px; border-radius: 5px; }
+  .lp-plan-state { padding: 18px; color: #667085; font-weight: 800; }
+  .lp-plan-state.is-error { color: #b42318; background: #fff8f6; border-color: #fecdca; }
+  .lp-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+    gap: 18px;
+    align-items: stretch;
+  }
+  .lp-plan {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 28px 24px 24px;
+    min-height: 100%;
+    border-top: 4px solid var(--plan-color);
+  }
+  .lp-plan.is-featured { box-shadow: 0 18px 50px rgba(16,24,40,.12); transform: translateY(-5px); }
+  .lp-plan-badge {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    background: var(--plan-color);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 5px 9px;
+    border-radius: 999px;
+  }
+  .lp-plan-name { color: var(--plan-color); font-weight: 900; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+  .lp-plan-price { display: flex; align-items: baseline; gap: 6px; margin-top: 14px; }
+  .lp-plan-price strong { font-size: 34px; line-height: 1; letter-spacing: 0; }
+  .lp-plan-price span, .lp-plan-desc { color: #667085; }
+  .lp-plan-desc { line-height: 1.58; margin: 12px 0 0; }
+  .lp-plan-limits { display: grid; gap: 8px; padding: 14px; border-radius: 8px; background: #f9fafb; color: #475467; font-size: 13px; font-weight: 800; }
+  .lp-plan ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .lp-plan li { display: flex; gap: 8px; align-items: flex-start; color: #344054; font-size: 13px; font-weight: 700; }
+  .lp-plan li svg { color: #22c55e; margin-top: 2px; flex: 0 0 auto; }
+  .lp-plan .lp-btn { margin-top: auto; }
+  .lp-cta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 30px;
+    padding: 64px max(22px, calc((100vw - 1180px) / 2));
+    background: #eef6ff;
+    border-top: 1px solid #bfdbfe;
+  }
+  .lp-cta h2 { max-width: 760px; margin-bottom: 0; }
+  .lp-cta-actions { display: flex; gap: 10px; flex-wrap: wrap; flex: 0 0 auto; }
+  .lp-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 28px max(22px, calc((100vw - 1180px) / 2));
+    background: #091120;
+    color: rgba(255,255,255,.62);
+  }
+  .lp-footer div { display: flex; gap: 18px; }
+  .lp-footer a { text-decoration: none; font-weight: 800; color: rgba(255,255,255,.8); }
+  .lp-modal-shell { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 20px; }
+  .lp-modal-backdrop { position: absolute; inset: 0; border: 0; background: rgba(9,17,32,.72); backdrop-filter: blur(14px); cursor: pointer; }
+  .lp-login-modal {
+    position: relative;
+    z-index: 1;
+    width: min(920px, 100%);
+    display: grid;
+    grid-template-columns: .95fr 1.05fr;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 34px 90px rgba(0,0,0,.36);
+  }
+  .lp-modal-close { position: absolute; right: 12px; top: 12px; z-index: 2; }
+  .lp-icon-btn {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #e4e7ec;
+    background: #fff;
+    color: #475467;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .lp-login-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 28px;
+    min-height: 520px;
+    padding: 34px;
+    background:
+      linear-gradient(160deg, rgba(9,17,32,.95), rgba(16,24,40,.82)),
+      url('/textures/fundo.jpg') center/cover;
+    color: #fff;
+  }
+  .lp-login-side h2 { font-size: 36px; line-height: 1.04; margin: 12px 0; letter-spacing: 0; }
+  .lp-login-side p { color: rgba(255,255,255,.7); line-height: 1.7; margin: 0; }
+  .lp-login-side .lp-mini-grid { grid-template-columns: repeat(2, 1fr); }
+  .lp-login-form { padding: 54px 44px 40px; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+  .lp-login-form h3 { margin: 8px 0 5px; font-size: 28px; letter-spacing: 0; }
+  .lp-login-form p { margin: 0; color: #667085; line-height: 1.6; }
+  .lp-login-form label { display: grid; gap: 7px; font-weight: 800; color: #344054; font-size: 13px; }
+  .lp-login-form input {
+    width: 100%;
+    height: 44px;
+    border: 1px solid #d0d5dd;
+    border-radius: 8px;
+    padding: 0 12px;
+    color: #101828;
+    outline: none;
+    font: inherit;
+    background: #fff;
+  }
+  .lp-login-form input:focus { border-color: #3288e0; box-shadow: 0 0 0 3px rgba(50,136,224,.14); }
+  .lp-error { background: #fff8f6; border: 1px solid #fecdca; color: #b42318; border-radius: 8px; padding: 11px 12px; font-weight: 700; font-size: 13px; }
+  .lp-login-foot { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #e4e7ec; padding-top: 16px; }
+  .lp-login-foot a { color: #3288e0; font-weight: 800; text-decoration: none; font-size: 13px; }
+  @media (max-width: 980px) {
+    .lp-nav { grid-template-columns: 1fr auto; }
+    .lp-nav-links { display: none; }
+    .lp-hero, .lp-feature, .lp-feature.is-reverse, .lp-cta { grid-template-columns: 1fr; }
+    .lp-feature.is-reverse .lp-feature-copy { order: 0; }
+    .lp-hero { padding-top: 112px; }
+    .lp-product-shell { grid-template-columns: 1fr; min-height: 0; }
+    .lp-product-shell aside { display: none; }
+    .lp-module-layout { grid-template-columns: 1fr; }
+    .lp-cta { display: grid; }
+  }
+  @media (max-width: 720px) {
+    .lp-nav-actions .lp-btn-primary { display: none; }
+    .lp-hero h1 { font-size: 42px; }
+    .lp-mini-grid, .lp-point-grid, .lp-building-shot, .lp-login-modal, .lp-module-grid, .lp-module-stock { grid-template-columns: 1fr; }
+    .lp-agenda-row { grid-template-columns: 1fr; }
+    .lp-sale-row { grid-template-columns: 1fr auto; }
+    .lp-sale-row span { grid-column: 1 / -1; }
+    .lp-login-side { display: none; }
+    .lp-login-form { padding: 44px 24px 28px; }
+    .lp-footer { flex-direction: column; align-items: flex-start; }
+  }
+`;

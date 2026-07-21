@@ -32,7 +32,14 @@ function fmtDateTime(value) {
 }
 
 function tipoLabel(tipo) {
+  if (tipo === 'casa') return 'Casa';
   return tipo === 'apartamento' ? 'Apartamento' : 'Lote';
+}
+
+function localDateToday() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
 }
 
 function parseCurrency(value) {
@@ -64,6 +71,7 @@ export function ComercialPanel() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(null);
   const [negociando, setNegociando] = useState(null);
+  const [confirmandoVenda, setConfirmandoVenda] = useState(null);
 
   const fetchData = useCallback(async () => {
     setError('');
@@ -101,15 +109,15 @@ export function ComercialPanel() {
     }
   }
 
-  async function handleConverter(item) {
-    if (!window.confirm(`Converter ${tipoLabel(item.tipo).toLowerCase()} ${item.codigo} em venda?`)) return;
+  async function handleConverter(item, dataVenda) {
     const key = `venda-${item.tipo}-${item.id}`;
     setBusy(key);
     try {
-      await converterReservaEmVenda(item.tipo, item.id);
+      await converterReservaEmVenda(item.tipo, item.id, dataVenda);
       setReservas((prev) => prev.filter((reserva) => !(reserva.tipo === item.tipo && reserva.id === item.id)));
+      setConfirmandoVenda(null);
     } catch (err) {
-      alert(err.message || 'Erro ao converter reserva');
+      throw new Error(err.message || 'Erro ao converter reserva');
     } finally {
       setBusy(null);
     }
@@ -211,7 +219,7 @@ export function ComercialPanel() {
                         </button>
                         <button
                           className="table-action"
-                          onClick={() => handleConverter(item)}
+                          onClick={() => setConfirmandoVenda(item)}
                           disabled={isBusy || !item.cliente_id}
                           title={!item.cliente_id ? 'Reserva sem cliente vinculado' : 'Converter reserva em venda'}
                         >
@@ -234,7 +242,85 @@ export function ComercialPanel() {
           onSaved={handleNegociacaoSaved}
         />
       )}
+
+      {confirmandoVenda && (
+        <ComercialVendaModal
+          item={confirmandoVenda}
+          saving={busy === `venda-${confirmandoVenda.tipo}-${confirmandoVenda.id}`}
+          onClose={() => setConfirmandoVenda(null)}
+          onConfirm={(dataVenda) => handleConverter(confirmandoVenda, dataVenda)}
+        />
+      )}
     </section>
+  );
+}
+
+function ComercialVendaModal({ item, saving, onClose, onConfirm }) {
+  const [dataVenda, setDataVenda] = useState(localDateToday);
+  const [error, setError] = useState('');
+
+  async function handleConfirm() {
+    if (!dataVenda || saving) return;
+    setError('');
+    try {
+      await onConfirm(dataVenda);
+    } catch (err) {
+      setError(err.message || 'Erro ao converter reserva');
+    }
+  }
+
+  return (
+    <div className="sale-modal-backdrop" role="presentation" onMouseDown={() => !saving && onClose()}>
+      <section
+        className="sale-modal comercial-sale-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="comercial-sale-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="sale-modal-head">
+          <div>
+            <div className="dash-eyebrow">CONFIRMAR VENDA</div>
+            <h2 id="comercial-sale-title">{tipoLabel(item.tipo)} {item.codigo}</h2>
+            <p>{item.empreendimento} - {fmtBRL(item.valor)}</p>
+          </div>
+          <button className="sale-modal-close" type="button" onClick={onClose} disabled={saving} aria-label="Fechar">
+            <svg width="14" height="14" viewBox="0 0 14 14">
+              <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
+          </button>
+        </header>
+
+        <p className="comercial-sale-intro">Confira as informações antes de concluir a venda.</p>
+
+        <div className="comercial-sale-fields">
+          <label className="field-label">
+            Cliente
+            <input className="field-input" value={item.cliente || ''} readOnly />
+          </label>
+          <label className="field-label">
+            Data da venda
+            <input
+              className="field-input"
+              type="date"
+              value={dataVenda}
+              max={localDateToday()}
+              onChange={(event) => setDataVenda(event.target.value)}
+              required
+            />
+          </label>
+        </div>
+
+        {error && <div className="comercial-sale-error" role="alert">{error}</div>}
+
+        <footer className="sale-modal-actions">
+          <button className="table-action table-action-ghost" type="button" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button className="table-action" type="button" onClick={handleConfirm} disabled={saving || !dataVenda}>
+            {saving ? 'Convertendo...' : 'Confirmar venda'}
+          </button>
+        </footer>
+      </section>
+    </div>
   );
 }
 

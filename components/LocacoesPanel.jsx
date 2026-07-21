@@ -5,6 +5,7 @@ import { fmtBRL } from '../lib/data';
 import {
   cancelarPagamentoLocacao,
   getLocacaoPagamentos,
+  getPagamentosLocacoes,
   registrarPagamentoLocacao,
 } from '../lib/api';
 import { userHasModule } from '../lib/modules';
@@ -17,6 +18,17 @@ function clientLabel(client) {
 function dateBR(value) {
   if (!value) return 'Sem prazo';
   return new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR');
+}
+
+function dateTimeBR(value) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function mesLabel(ref) {
@@ -35,6 +47,41 @@ function proximoVencimento(diaVencimento) {
   const ano = d.getFullYear();
   const mes = d.getMonth() + 1;
   return `${ano}-${String(mes).padStart(2, '0')}-${String(diaVencimento).padStart(2, '0')}`;
+}
+
+function rentalUnitLabel(locacao) {
+  if (locacao?.origem === 'casa' || locacao?.casa_id) {
+    return locacao.casa?.nome || locacao.apartamento_codigo || 'Casa';
+  }
+  return `Apt ${locacao?.apartamento_codigo || '-'}`;
+}
+
+function rentalLocationLabel(locacao) {
+  if (locacao?.origem === 'casa' || locacao?.casa_id) {
+    return [locacao.casa?.endereco, locacao.casa?.numero, locacao.casa?.bairro, locacao.casa?.cidade, locacao.casa?.estado]
+      .filter(Boolean)
+      .join(' · ') || 'Casa';
+  }
+  return [locacao?.predio?.nome, locacao?.andar?.numero ? `${locacao.andar.numero}º andar` : null]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function UltimoPagamentoInfo({ pagamento }) {
+  if (!pagamento) {
+    return (
+      <>
+        <b>Sem pagamento</b>
+        <small>Nenhum registro pago</small>
+      </>
+    );
+  }
+  return (
+    <>
+      <b>{dateBR(pagamento.pago_em)}</b>
+      <small>{mesLabel(pagamento.referencia)} · {fmtBRL(pagamento.valor)}</small>
+    </>
+  );
 }
 
 // ── Status chip de pagamento ─────────────────────────────────────────────────
@@ -101,8 +148,8 @@ function PagamentoDialog({ locacao, onConfirm, onCancel }) {
         <header className="sale-modal-head">
           <div>
             <div className="dash-eyebrow">REGISTRAR PAGAMENTO</div>
-            <h2>Apt {locacao.apartamento_codigo}</h2>
-            <p>{locacao.predio?.nome} · {locacao.cliente?.nome}</p>
+              <h2>{rentalUnitLabel(locacao)}</h2>
+              <p>{rentalLocationLabel(locacao)} · {locacao.cliente?.nome}</p>
           </div>
           <button className="sale-modal-close" onClick={onCancel} aria-label="Fechar">
             <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
@@ -201,8 +248,8 @@ export function EncerrarLocacaoDialog({ locacao, onConfirm, onCancel }) {
         <header className="sale-modal-head">
           <div>
             <div className="dash-eyebrow">ENCERRAR LOCAÇÃO</div>
-            <h2>Apt {locacao.apartamento_codigo}</h2>
-            <p>{locacao.predio?.nome} · {locacao.cliente?.nome}</p>
+            <h2>{rentalUnitLabel(locacao)}</h2>
+            <p>{rentalLocationLabel(locacao)} · {locacao.cliente?.nome}</p>
           </div>
           <button className="sale-modal-close" onClick={onCancel} aria-label="Fechar">
             <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
@@ -289,8 +336,8 @@ function PagamentosPanel({ locacao, canManage, onClose, onPagamentoAdded }) {
           <header className="sale-modal-head">
             <div>
               <div className="dash-eyebrow">HISTÓRICO DE PAGAMENTOS</div>
-              <h2>Apt {locacao.apartamento_codigo}</h2>
-              <p>{locacao.predio?.nome} · {locacao.cliente?.nome} · Dia {locacao.dia_vencimento}</p>
+            <h2>{rentalUnitLabel(locacao)}</h2>
+            <p>{rentalLocationLabel(locacao)} · {locacao.cliente?.nome} · Dia {locacao.dia_vencimento}</p>
             </div>
             <button className="sale-modal-close" onClick={onClose} aria-label="Fechar">
               <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
@@ -445,7 +492,7 @@ export function LocacaoDialog({ apartamento, clientes, onConfirm, onCancel }) {
         <div className="rental-modal-head">
           <div>
             <div className="dash-eyebrow">NOVA LOCAÇÃO</div>
-            <h3>Alugar apartamento {apartamento?.ap_id}</h3>
+            <h3>Alugar {apartamento?.casa_id || apartamento?.codigo ? 'casa' : 'apartamento'} {apartamento?.ap_id}</h3>
             <p>Cadastre os dados financeiros e o período do contrato.</p>
           </div>
           <button className="apc-close" onClick={onCancel} aria-label="Fechar">×</button>
@@ -528,9 +575,240 @@ export function LocacaoDialog({ apartamento, clientes, onConfirm, onCancel }) {
   );
 }
 
+function userLabel(user, fallbackId) {
+  if (!user) return fallbackId ? `Usuario #${fallbackId}` : 'Nao informado';
+  return user.nome || user.login || user.email || `Usuario #${user.id}`;
+}
+
+function PagamentosHistoryPage({ onBack }) {
+  const [pagamentos, setPagamentos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
+  const [usuarioFiltro, setUsuarioFiltro] = useState('todos');
+  const [clienteFiltro, setClienteFiltro] = useState('todos');
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError('');
+    getPagamentosLocacoes()
+      .then((data) => {
+        if (alive) setPagamentos(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        if (alive) setError(err.message || 'Nao foi possivel carregar o historico.');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => { alive = false; };
+  }, []);
+
+  const usuarios = useMemo(() => {
+    const map = new Map();
+    pagamentos.forEach((payment) => {
+      const key = payment.registrado_por_usuario?.id ?? payment.registrado_por ?? 'sem_usuario';
+      if (!map.has(String(key))) {
+        map.set(String(key), userLabel(payment.registrado_por_usuario, payment.registrado_por));
+      }
+    });
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  }, [pagamentos]);
+
+  const clientes = useMemo(() => {
+    const map = new Map();
+    pagamentos.forEach((payment) => {
+      const client = payment.locacao?.cliente;
+      const key = client?.id ?? 'sem_cliente';
+      if (!map.has(String(key))) map.set(String(key), client?.nome || 'Cliente não informado');
+    });
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  }, [pagamentos]);
+
+  const pagamentosFiltrados = useMemo(() => {
+    const start = dataInicio ? new Date(`${dataInicio}T00:00:00`) : null;
+    const end = dataFim ? new Date(`${dataFim}T23:59:59.999`) : null;
+
+    return pagamentos.filter((payment) => {
+      const paymentDateValue = payment.pago_em || payment.criado_em;
+      const paymentDate = paymentDateValue ? new Date(paymentDateValue) : null;
+      if (start && (!paymentDate || paymentDate < start)) return false;
+      if (end && (!paymentDate || paymentDate > end)) return false;
+
+      const userKey = String(payment.registrado_por_usuario?.id ?? payment.registrado_por ?? 'sem_usuario');
+      if (usuarioFiltro !== 'todos' && userKey !== usuarioFiltro) return false;
+
+      const clientKey = String(payment.locacao?.cliente?.id ?? 'sem_cliente');
+      if (clienteFiltro !== 'todos' && clientKey !== clienteFiltro) return false;
+
+      return true;
+    });
+  }, [pagamentos, dataInicio, dataFim, usuarioFiltro, clienteFiltro]);
+
+  const limparFiltros = () => {
+    setDataInicio('');
+    setDataFim('');
+    setUsuarioFiltro('todos');
+    setClienteFiltro('todos');
+  };
+
+  const pagos = pagamentosFiltrados.filter((p) => p.status === 'pago');
+  const totalPago = pagos.reduce((sum, p) => sum + Number(p.valor || 0), 0);
+  const cancelados = pagamentosFiltrados.filter((p) => p.status === 'cancelado').length;
+
+  return (
+    <section className="list-page payment-history-page">
+      <header className="list-page-head">
+        <div>
+          <button className="tb-back" type="button" onClick={onBack} style={{ marginBottom: 16 }}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 3l-5 5 5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Locações
+          </button>
+          <div className="dash-eyebrow">HISTORICO FINANCEIRO</div>
+          <h1 className="list-page-title">Histórico de pagamentos</h1>
+          <p className="dash-sub">Consulte todos os pagamentos registrados nas locações, com valores, datas e usuário de inclusão.</p>
+        </div>
+      </header>
+
+      <div className="rental-metrics" style={{ marginBottom: 22 }}>
+        <div className="rental-metric rental-metric-primary">
+          <span>Total recebido</span>
+          <strong>{fmtBRL(totalPago)}</strong>
+          <small>{pagos.length} pagamento{pagos.length === 1 ? '' : 's'} pago{pagos.length === 1 ? '' : 's'}</small>
+        </div>
+        <div className="rental-metric">
+          <span>Registros</span>
+          <strong>{pagamentosFiltrados.length}</strong>
+          <small>de {pagamentos.length} lançamentos</small>
+        </div>
+        <div className="rental-metric">
+          <span>Cancelados</span>
+          <strong>{cancelados}</strong>
+          <small>pagamentos cancelados</small>
+        </div>
+      </div>
+
+      <section className="rental-table-card">
+        <header>
+          <div>
+            <h3>Pagamentos registrados</h3>
+            <p>{pagamentosFiltrados.length} registro{pagamentosFiltrados.length === 1 ? '' : 's'} exibido{pagamentosFiltrados.length === 1 ? '' : 's'}</p>
+          </div>
+        </header>
+
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(150px, 1fr))', gap: 12, alignItems: 'end' }}>
+            <label className="field-label">
+              Data inicial
+              <input className="field-input" type="date" value={dataInicio} onChange={(event) => setDataInicio(event.target.value)} />
+            </label>
+            <label className="field-label">
+              Data final
+              <input className="field-input" type="date" value={dataFim} min={dataInicio || undefined} onChange={(event) => setDataFim(event.target.value)} />
+            </label>
+            <label className="field-label">
+              Usuário
+              <select className="field-input" value={usuarioFiltro} onChange={(event) => setUsuarioFiltro(event.target.value)}>
+                <option value="todos">Todos os usuários</option>
+                {usuarios.map(([id, label]) => (
+                  <option key={id} value={id}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field-label">
+              Cliente
+              <select className="field-input" value={clienteFiltro} onChange={(event) => setClienteFiltro(event.target.value)}>
+                <option value="todos">Todos os clientes</option>
+                {clientes.map(([id, label]) => (
+                  <option key={id} value={id}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <button className="table-action table-action-ghost" type="button" onClick={limparFiltros}>
+              Limpar filtros
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="rental-empty">Carregando histórico...</div>
+        ) : error ? (
+          <div className="rental-empty" style={{ color: '#dc2626' }}>{error}</div>
+        ) : pagamentos.length === 0 ? (
+          <div className="rental-empty">Nenhum pagamento registrado ainda.</div>
+        ) : pagamentosFiltrados.length === 0 ? (
+          <div className="rental-empty">Nenhum pagamento encontrado com os filtros selecionados.</div>
+        ) : (
+          <div className="rental-table-wrap">
+            <table className="rental-table">
+              <thead>
+                <tr>
+                  <th>Unidade</th>
+                  <th>Cliente</th>
+                  <th>Competência</th>
+                  <th>Valor</th>
+                  <th>Vencimento</th>
+                  <th>Pago em</th>
+                  <th>Método</th>
+                  <th>Status</th>
+                  <th>Documento</th>
+                  <th>Observação</th>
+                  <th>Incluído por</th>
+                  <th>Incluído em</th>
+                  <th>Atualizado em</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagamentosFiltrados.map((payment) => {
+                  const locacao = payment.locacao || {};
+                  return (
+                    <tr key={payment.id}>
+                      <td>
+                        <b>{rentalUnitLabel(locacao)}</b>
+                        <small>
+                          {rentalLocationLabel(locacao) || 'Locação sem origem'}
+                        </small>
+                      </td>
+                      <td>
+                        <b>{locacao.cliente?.nome || '-'}</b>
+                        <small>{formatCpfCnpj(locacao.cliente?.cpf_cnpj)}</small>
+                      </td>
+                      <td><b>{mesLabel(payment.referencia)}</b></td>
+                      <td className="rental-money">{fmtBRL(payment.valor)}</td>
+                      <td>{dateBR(payment.vencimento)}</td>
+                      <td>{payment.pago_em ? dateBR(payment.pago_em) : '—'}</td>
+                      <td style={{ textTransform: 'capitalize' }}>{payment.metodo || '-'}</td>
+                      <td>
+                        {payment.status === 'pago'
+                          ? <span style={{ color: '#16a34a', fontWeight: 700 }}>Pago</span>
+                          : <span style={{ color: '#dc2626', fontWeight: 700 }}>Cancelado</span>
+                        }
+                      </td>
+                      <td>{payment.numero_documento || '—'}</td>
+                      <td style={{ minWidth: 180 }}>{payment.observacao || '—'}</td>
+                      <td>
+                        <b>{userLabel(payment.registrado_por_usuario, payment.registrado_por)}</b>
+                        {payment.registrado_por_usuario?.email && <small>{payment.registrado_por_usuario.email}</small>}
+                      </td>
+                      <td>{dateTimeBR(payment.criado_em)}</td>
+                      <td>{dateTimeBR(payment.atualizado_em)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
 // ── Tabela de locações ───────────────────────────────────────────────────────
 
-function RentalTable({ title, rows, statusFilter, onStatusFilterChange, active, canManage, onEnd, onVerPagamentos }) {
+function RentalTable({ title, rows, statusFilter, onStatusFilterChange, active, canManage, onEnd, onVerPagamentos, onOpenPaymentHistory }) {
   return (
     <section className="rental-table-card">
       <header>
@@ -538,21 +816,26 @@ function RentalTable({ title, rows, statusFilter, onStatusFilterChange, active, 
           <h3>{title}</h3>
           <p>{rows.length} contrato{rows.length === 1 ? '' : 's'}</p>
         </div>
-        <div className="rental-filter-tabs" role="tablist" aria-label="Filtrar locacoes">
-          {[
-            ['ativa', 'Ativas'],
-            ['encerrada', 'Encerradas'],
-            ['todos', 'Todas'],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={statusFilter === value ? 'active' : ''}
-              onClick={() => onStatusFilterChange?.(value)}
-            >
-              {label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button className="table-action table-action-ghost" type="button" onClick={onOpenPaymentHistory}>
+            Histórico de pagamentos
+          </button>
+          <div className="rental-filter-tabs" role="tablist" aria-label="Filtrar locacoes">
+            {[
+              ['ativa', 'Ativas'],
+              ['encerrada', 'Encerradas'],
+              ['todos', 'Todas'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={statusFilter === value ? 'active' : ''}
+                onClick={() => onStatusFilterChange?.(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
       {rows.length === 0 ? (
@@ -562,11 +845,11 @@ function RentalTable({ title, rows, statusFilter, onStatusFilterChange, active, 
           <table className="rental-table">
             <thead>
               <tr>
-                <th>Apartamento</th>
+                <th>Unidade</th>
                 <th>Cliente</th>
                 <th>Valor mensal</th>
-                <th>Período</th>
-                <th>Vencimento</th>
+                <th>Último pagamento</th>
+                <th>Próximo pagamento</th>
                 <th>Status</th>
                 {active && <th>Pagamento</th>}
                 {active && canManage && <th />}
@@ -576,13 +859,16 @@ function RentalTable({ title, rows, statusFilter, onStatusFilterChange, active, 
               {rows.map((rental) => (
                 <tr key={rental.id}>
                   <td>
-                    <b>{rental.apartamento_codigo}</b>
-                    <small>{[rental.predio?.nome, rental.andar?.numero ? `${rental.andar.numero}º andar` : null].filter(Boolean).join(' · ')}</small>
+                    <b>{rentalUnitLabel(rental)}</b>
+                    <small>{rentalLocationLabel(rental)}</small>
                   </td>
                   <td><b>{rental.cliente?.nome || '—'}</b><small>{formatCpfCnpj(rental.cliente?.cpf_cnpj)}</small></td>
                   <td className="rental-money">{fmtBRL(rental.valor_mensal)}</td>
-                  <td>{dateBR(rental.data_inicio)}<small>até {dateBR(rental.data_fim)}</small></td>
-                  <td>Dia {rental.dia_vencimento}</td>
+                  <td><UltimoPagamentoInfo pagamento={rental.ultimo_pagamento} /></td>
+                  <td>
+                    <b>{dateBR(rental.proximo_vencimento)}</b>
+                    <small>Dia {rental.dia_vencimento}</small>
+                  </td>
                   <td>
                     <span className={`rental-status-chip rental-status-${rental.status}`}>
                       {rental.status === 'ativa' ? 'Ativa' : rental.status === 'encerrada' ? 'Encerrada' : rental.status}
@@ -634,6 +920,7 @@ export function LocacoesPanel({
   const [locacoes, setLocacoes] = useState(initialLocacoes);
   const [pagamentosLocacao, setPagamentosLocacao] = useState(null);
   const [encerrarLocacaoDialog, setEncerrarLocacaoDialog] = useState(null);
+  const [showPaymentHistory, setShowPaymentHistory] = useState(false);
 
   useEffect(() => { setLocacoes(initialLocacoes); }, [initialLocacoes]);
 
@@ -651,6 +938,10 @@ export function LocacoesPanel({
 
   if (loading) return <div className="rental-loading">Carregando locações...</div>;
 
+  if (showPaymentHistory) {
+    return <PagamentosHistoryPage onBack={() => setShowPaymentHistory(false)} />;
+  }
+
   return (
     <div className="rentals-page">
       <div className="rental-metrics">
@@ -660,14 +951,14 @@ export function LocacoesPanel({
           <small>contratos ativos</small>
         </div>
         <div className="rental-metric">
-          <span>Apartamentos alugados</span>
+          <span>Unidades alugadas</span>
           <strong>{resumo.total_ativas || 0}</strong>
           <small>{resumo.ocupacao_percentual || 0}% de ocupação</small>
         </div>
         <div className="rental-metric">
           <span>Ticket médio</span>
           <strong>{fmtBRL(resumo.ticket_medio || 0)}</strong>
-          <small>por apartamento</small>
+          <small>por unidade</small>
         </div>
         <div className="rental-metric">
           <span>Unidades vagas</span>
@@ -685,6 +976,7 @@ export function LocacoesPanel({
         canManage={canManage}
         onEnd={(rental) => setEncerrarLocacaoDialog(rental)}
         onVerPagamentos={(rental) => setPagamentosLocacao(rental)}
+        onOpenPaymentHistory={() => setShowPaymentHistory(true)}
       />
       {encerrarLocacaoDialog && (
         <EncerrarLocacaoDialog
