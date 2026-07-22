@@ -4,7 +4,7 @@ import { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { fmtBRL, statusLabel as getStatusLabel } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { STATUS_COLORS } from './MapView';
-import { getLotePrecoHistorico } from '../lib/api';
+import { deleteLoteImagem, getLotePrecoHistorico, uploadLoteImagens } from '../lib/api';
 
 function imprimirFichaLote(lot, loteamento) {
   const fmtV = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -149,13 +149,91 @@ function PriceEditor({ preco, area, canEdit, onSave }) {
   );
 }
 
-export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange, onUpdatePrice, onOpenDrawer, user, loteamento }) => {
+function LotImageGallery({ lot, images, canEdit, onChange }) {
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+
+  const upload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    setBusy(true);
+    try {
+      const result = await uploadLoteImagens(lot.db_id, files);
+      onChange(result.imagens || []);
+    } catch (error) {
+      alert(error.message || 'Nao foi possivel enviar as imagens.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (imageUrl) => {
+    if (!confirm('Remover esta imagem do lote?')) return;
+    setBusy(true);
+    try {
+      const result = await deleteLoteImagem(lot.db_id, imageUrl);
+      onChange(result.imagens || []);
+    } catch (error) {
+      alert(error.message || 'Nao foi possivel remover a imagem.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!images.length && !canEdit) return null;
+
+  return (
+    <div className="lot-image-gallery">
+      <div className="lot-image-gallery-head">
+        <span>Imagens do lote</span>
+        {canEdit && images.length < 10 && (
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}>
+            {busy ? 'Enviando...' : '+ Adicionar'}
+          </button>
+        )}
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={upload} />
+      {images.length > 0 ? (
+        <div className="lot-image-grid">
+          {images.map((imageUrl, index) => (
+            <div className="lot-image-thumb" key={imageUrl}>
+              <button type="button" className="lot-image-open" onClick={() => window.open(imageUrl, '_blank')} title={`Abrir imagem ${index + 1}`}>
+                <img src={imageUrl} alt={`Lote ${lot.id} - imagem ${index + 1}`} />
+              </button>
+              {canEdit && (
+                <button type="button" className="lot-image-remove" onClick={() => remove(imageUrl)} disabled={busy} aria-label="Remover imagem">×</button>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <button type="button" className="lot-image-empty" onClick={() => inputRef.current?.click()} disabled={busy}>
+          Adicionar fotos deste lote
+        </button>
+      )}
+    </div>
+  );
+}
+
+export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatusChange, onUpdatePrice, onOpenDrawer, onImagesChange, user, loteamento }) => {
   if (!lot) return null;
   const status = STATUS_COLORS[lot.status] || STATUS_COLORS.disponivel;
   const statusLabel = getStatusLabel(lot.status);
   const [actionLoading, setActionLoading] = useState(false);
   const canEditPrice = onUpdatePrice && user && ['admin', 'gerente'].includes(user.role) && lot.status !== 'vendido';
   const [precoHistorico, setPrecoHistorico] = useState([]);
+  const [images, setImages] = useState(lot.imagens || []);
+  const canEditImages = Boolean(lot.db_id && user && ['admin', 'gerente'].includes(user.role));
+
+  useEffect(() => {
+    setImages(lot.imagens || []);
+  }, [lot.db_id, lot.imagens]);
+
+  const handleImagesChange = (nextImages) => {
+    setImages(nextImages);
+    onImagesChange?.(nextImages);
+  };
 
   useEffect(() => {
     if (!lot?.db_id) return;
@@ -245,6 +323,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
           </div>
         </div>
         <ClientLinkInfo lot={lot} user={user} compact onOpenDrawer={onOpenDrawer} />
+        <LotImageGallery lot={lot} images={images} canEdit={canEditImages} onChange={handleImagesChange} />
         {lot.status === 'reservado' && lot.reserva_expira_em && (() => {
           const expira = new Date(lot.reserva_expira_em);
           const diffMs = expira - new Date();
@@ -291,6 +370,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
           </svg>
         </button>
         <div className="lcp-photo" style={{ background: photoBg }}>
+          {images[0] && <img className="lot-card-cover" src={images[0]} alt={`Lote ${lot.id}`} />}
           <div className="lcp-photo-grain" />
           <div className="lcp-photo-label">LOTE</div>
           <div className="lcp-photo-tag">{lot.id}</div>
@@ -334,6 +414,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
             )}
           </div>
           <ClientLinkInfo lot={lot} user={user} onOpenDrawer={onOpenDrawer} />
+          <LotImageGallery lot={lot} images={images} canEdit={canEditImages} onChange={handleImagesChange} />
           <div className="lcp-actions">
             {canReserve && (
               <button
@@ -368,6 +449,7 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
 
       <div className="lcd-top">
         <div className="lcd-photo" style={{ background: photoBg }}>
+          {images[0] && <img className="lot-card-cover" src={images[0]} alt={`Lote ${lot.id}`} />}
           <div className="lcd-photo-grain" />
           <div className="lcd-photo-label">LOTE {lot.id}</div>
         </div>
@@ -428,6 +510,8 @@ export const LotCard = ({ lot, variant = 'detalhado', onClose, position, onStatu
       })()}
 
       <ClientLinkInfo lot={lot} user={user} onOpenDrawer={onOpenDrawer} />
+
+      <LotImageGallery lot={lot} images={images} canEdit={canEditImages} onChange={handleImagesChange} />
 
       {precoHistorico.length > 0 && (
         <div style={{ margin: '8px 0 4px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>

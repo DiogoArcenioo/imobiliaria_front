@@ -1193,6 +1193,22 @@ export default function ImobiliariaApp() {
                       prev ? { ...prev, lot: { ...prev.lot, preco: updated?.preco ?? novoPreco } } : prev
                     );
                   }}
+                  onImagesChange={(imagens) => {
+                    const lot = selectedLot.lot;
+                    setLoteamentos((prev) =>
+                      prev.map((lt) =>
+                        lt.id !== activeLoteamentoId
+                          ? lt
+                          : {
+                              ...lt,
+                              lots: (lt.lots || []).map((item) =>
+                                item.db_id === lot.db_id ? { ...item, imagens } : item
+                              ),
+                            }
+                      )
+                    );
+                    setSelectedLot((prev) => prev ? { ...prev, lot: { ...prev.lot, imagens } } : prev);
+                  }}
                   user={user}
                 />
               )}

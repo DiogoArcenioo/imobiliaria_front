@@ -11,6 +11,7 @@ export default function LoteamentoPublicoPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [selectedLot, setSelectedLot] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
 
   useEffect(() => {
     if (!id) return;
@@ -114,6 +115,15 @@ export default function LoteamentoPublicoPage() {
                 {selectedLot.area > 0 && <div style={{ fontSize: '0.7rem', color: '#999' }}>{fmtBRL(Math.round(selectedLot.preco / selectedLot.area))}/m²</div>}
               </div>
             )}
+            {selectedLot.imagens?.length > 0 && (
+              <div className="public-lot-gallery">
+                {selectedLot.imagens.map((imageUrl, index) => (
+                  <button type="button" key={imageUrl} onClick={() => setPreviewImage(imageUrl)}>
+                    <img src={imageUrl} alt={`Lote ${selectedLot.id} - imagem ${index + 1}`} />
+                  </button>
+                ))}
+              </div>
+            )}
             <button onClick={() => setSelectedLot(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: 18, padding: '0 4px' }}>×</button>
           </div>
         )}
@@ -140,6 +150,12 @@ export default function LoteamentoPublicoPage() {
               <div style={{ fontSize: '0.85rem', color: '#444' }}>{data.descricao}</div>
             </div>
           )}
+        </div>
+      )}
+      {previewImage && (
+        <div className="public-image-lightbox" role="dialog" aria-modal="true" onClick={() => setPreviewImage(null)}>
+          <button type="button" aria-label="Fechar imagem" onClick={() => setPreviewImage(null)}>×</button>
+          <img src={previewImage} alt="Imagem ampliada do lote" onClick={(event) => event.stopPropagation()} />
         </div>
       )}
     </main>
