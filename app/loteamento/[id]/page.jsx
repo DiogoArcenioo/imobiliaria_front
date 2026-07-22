@@ -11,7 +11,7 @@ export default function LoteamentoPublicoPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [selectedLot, setSelectedLot] = useState(null);
-  const [previewImage, setPreviewImage] = useState(null);
+  const [previewIndex, setPreviewIndex] = useState(null);
 
   useEffect(() => {
     if (!id) return;
@@ -19,6 +19,21 @@ export default function LoteamentoPublicoPage() {
       .then(setData)
       .catch(() => setError('Loteamento não encontrado ou indisponível.'));
   }, [id]);
+
+  useEffect(() => {
+    setPreviewIndex(null);
+  }, [selectedLot?.id]);
+
+  useEffect(() => {
+    if (previewIndex === null || !selectedLot?.imagens?.length) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setPreviewIndex(null);
+      if (event.key === 'ArrowLeft') setPreviewIndex((index) => (index - 1 + selectedLot.imagens.length) % selectedLot.imagens.length);
+      if (event.key === 'ArrowRight') setPreviewIndex((index) => (index + 1) % selectedLot.imagens.length);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [previewIndex, selectedLot]);
 
   if (error) {
     return (
@@ -118,7 +133,7 @@ export default function LoteamentoPublicoPage() {
             {selectedLot.imagens?.length > 0 && (
               <div className="public-lot-gallery">
                 {selectedLot.imagens.map((imageUrl, index) => (
-                  <button type="button" key={imageUrl} onClick={() => setPreviewImage(imageUrl)}>
+                  <button type="button" key={imageUrl} onClick={() => setPreviewIndex(index)}>
                     <img src={imageUrl} alt={`Lote ${selectedLot.id} - imagem ${index + 1}`} />
                   </button>
                 ))}
@@ -152,10 +167,30 @@ export default function LoteamentoPublicoPage() {
           )}
         </div>
       )}
-      {previewImage && (
-        <div className="public-image-lightbox" role="dialog" aria-modal="true" onClick={() => setPreviewImage(null)}>
-          <button type="button" aria-label="Fechar imagem" onClick={() => setPreviewImage(null)}>×</button>
-          <img src={previewImage} alt="Imagem ampliada do lote" onClick={(event) => event.stopPropagation()} />
+      {previewIndex !== null && selectedLot?.imagens?.length > 0 && (
+        <div className="lot-gallery-modal" role="dialog" aria-modal="true" onClick={() => setPreviewIndex(null)}>
+          <div className="lot-gallery-dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="lot-gallery-title">
+              <div><strong>Lote {selectedLot.id}</strong><span>{previewIndex + 1} de {selectedLot.imagens.length}</span></div>
+              <button type="button" onClick={() => setPreviewIndex(null)} aria-label="Fechar galeria">×</button>
+            </div>
+            <div className="lot-gallery-main">
+              <img src={selectedLot.imagens[previewIndex]} alt={`Lote ${selectedLot.id} - imagem ${previewIndex + 1}`} />
+              {selectedLot.imagens.length > 1 && (
+                <>
+                  <button type="button" className="lot-gallery-nav lot-gallery-prev" onClick={() => setPreviewIndex((index) => (index - 1 + selectedLot.imagens.length) % selectedLot.imagens.length)}>‹</button>
+                  <button type="button" className="lot-gallery-nav lot-gallery-next" onClick={() => setPreviewIndex((index) => (index + 1) % selectedLot.imagens.length)}>›</button>
+                </>
+              )}
+            </div>
+            <div className="lot-gallery-thumbs">
+              {selectedLot.imagens.map((imageUrl, index) => (
+                <button type="button" key={imageUrl} className={index === previewIndex ? 'active' : ''} onClick={() => setPreviewIndex(index)}>
+                  <img src={imageUrl} alt={`Selecionar imagem ${index + 1}`} />
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </main>

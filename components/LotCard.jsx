@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useLayoutEffect, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { fmtBRL, statusLabel as getStatusLabel } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { STATUS_COLORS } from './MapView';
@@ -149,9 +150,54 @@ function PriceEditor({ preco, area, canEdit, onSave }) {
   );
 }
 
+function LotImageModal({ lot, images, initialIndex, onClose }) {
+  const [activeIndex, setActiveIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowLeft') setActiveIndex((index) => (index - 1 + images.length) % images.length);
+      if (event.key === 'ArrowRight') setActiveIndex((index) => (index + 1) % images.length);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [images.length, onClose]);
+
+  if (!images.length || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="lot-gallery-modal" role="dialog" aria-modal="true" aria-label={`Imagens do lote ${lot.id}`} onClick={onClose}>
+      <div className="lot-gallery-dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="lot-gallery-title">
+          <div><strong>Lote {lot.id}</strong><span>{activeIndex + 1} de {images.length}</span></div>
+          <button type="button" onClick={onClose} aria-label="Fechar galeria">×</button>
+        </div>
+        <div className="lot-gallery-main">
+          <img src={images[activeIndex]} alt={`Lote ${lot.id} - imagem ${activeIndex + 1}`} />
+          {images.length > 1 && (
+            <>
+              <button type="button" className="lot-gallery-nav lot-gallery-prev" onClick={() => setActiveIndex((index) => (index - 1 + images.length) % images.length)} aria-label="Imagem anterior">‹</button>
+              <button type="button" className="lot-gallery-nav lot-gallery-next" onClick={() => setActiveIndex((index) => (index + 1) % images.length)} aria-label="Proxima imagem">›</button>
+            </>
+          )}
+        </div>
+        <div className="lot-gallery-thumbs">
+          {images.map((imageUrl, index) => (
+            <button type="button" key={imageUrl} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}>
+              <img src={imageUrl} alt={`Selecionar imagem ${index + 1}`} />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function LotImageGallery({ lot, images, canEdit, onChange }) {
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
+  const [modalIndex, setModalIndex] = useState(null);
 
   const upload = async (event) => {
     const files = Array.from(event.target.files || []);
@@ -198,7 +244,7 @@ function LotImageGallery({ lot, images, canEdit, onChange }) {
         <div className="lot-image-grid">
           {images.map((imageUrl, index) => (
             <div className="lot-image-thumb" key={imageUrl}>
-              <button type="button" className="lot-image-open" onClick={() => window.open(imageUrl, '_blank')} title={`Abrir imagem ${index + 1}`}>
+              <button type="button" className="lot-image-open" onClick={() => setModalIndex(index)} title={`Abrir imagem ${index + 1}`}>
                 <img src={imageUrl} alt={`Lote ${lot.id} - imagem ${index + 1}`} />
               </button>
               {canEdit && (
@@ -211,6 +257,9 @@ function LotImageGallery({ lot, images, canEdit, onChange }) {
         <button type="button" className="lot-image-empty" onClick={() => inputRef.current?.click()} disabled={busy}>
           Adicionar fotos deste lote
         </button>
+      )}
+      {modalIndex !== null && (
+        <LotImageModal lot={lot} images={images} initialIndex={modalIndex} onClose={() => setModalIndex(null)} />
       )}
     </div>
   );
