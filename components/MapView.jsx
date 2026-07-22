@@ -68,13 +68,16 @@ export const STATUS_COLORS = {
   vendido:    { fill: '#e84040', stroke: '#be1a1a', label: '#961010', glow: 'rgba(220,40,40,.4)'   },
 };
 
-export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLotId, density }) {
+export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLotId, density, responsiveOverlays = false, showInfoOverlays = true }) {
   const T = MAP_THEMES[mapTheme] || MAP_THEMES.claro;
+  const mapRootRef = useRef(null);
   const svgRef = useRef(null);
+  const [compactOverlays, setCompactOverlays] = useState(Boolean(responsiveOverlays));
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const touchMoved = useRef(false);
   const [filtros, setFiltros] = useState({ status: [], precoMin: '', precoMax: '', areaMin: '', areaMax: '', quadra: '' });
   const [showFiltros, setShowFiltros] = useState(false);
 
@@ -84,6 +87,20 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
     setFiltros({ status: [], precoMin: '', precoMax: '', areaMin: '', areaMax: '', quadra: '' });
     setShowFiltros(false);
   }, [loteamento.id]);
+
+  useEffect(() => {
+    if (!responsiveOverlays || !mapRootRef.current) {
+      setCompactOverlays(false);
+      return undefined;
+    }
+
+    const update = () => setCompactOverlays(mapRootRef.current?.clientWidth <= 900);
+    update();
+
+    const observer = new ResizeObserver(update);
+    observer.observe(mapRootRef.current);
+    return () => observer.disconnect();
+  }, [responsiveOverlays]);
 
   const onWheel = (e) => {
     e.preventDefault();
@@ -105,6 +122,33 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
   };
 
   const onMouseUp = () => setIsDragging(false);
+
+  const onPointerDown = (e) => {
+    if (e.pointerType === 'mouse') return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    touchMoved.current = false;
+    setIsDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+  };
+
+  const onPointerMove = (e) => {
+    if (e.pointerType === 'mouse' || !isDragging) return;
+    if (Math.abs(e.clientX - dragStart.current.x) > 5 || Math.abs(e.clientY - dragStart.current.y) > 5) {
+      touchMoved.current = true;
+    }
+    setPan({
+      x: dragStart.current.panX + e.clientX - dragStart.current.x,
+      y: dragStart.current.panY + e.clientY - dragStart.current.y,
+    });
+  };
+
+  const onPointerUp = (e) => {
+    if (e.pointerType === 'mouse') return;
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    setIsDragging(false);
+  };
 
   useEffect(() => {
     const up = () => setIsDragging(false);
@@ -150,13 +194,17 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
   const [vw, vh] = loteamento.viewBox.split(' ').slice(2).map(Number);
 
   return (
-    <div className="map-wrap" style={{ background: T.bg }}>
+    <div ref={mapRootRef} className="map-wrap" style={{ background: T.bg }}>
       <div
         className="map-canvas"
         onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
       >
         <svg
@@ -384,7 +432,14 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
                   fillOpacity={isSel ? 0.82 : 0.62}
                   stroke={isSel ? s.stroke : T.lotStroke}
                   strokeWidth={isSel ? 3 : 1.2}
-                  onClick={(e) => { e.stopPropagation(); onLotClick(lot); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (touchMoved.current) {
+                      touchMoved.current = false;
+                      return;
+                    }
+                    onLotClick(lot);
+                  }}
                   style={{ cursor: 'pointer', transition: 'fill-opacity 0.15s, stroke-width 0.15s' }}
                 />
                 {/* Lot number badge */}
@@ -443,17 +498,17 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
       </div>
 
       {/* Map overlay UI */}
-      <MapControls
-        zoom={zoom}
-        onZoomIn={() => setZoom(z => Math.min(3, z + 0.2))}
-        onZoomOut={() => setZoom(z => Math.max(0.6, z - 0.2))}
-        onReset={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
-        theme={T}
-        onToggleFiltros={() => setShowFiltros(f => !f)}
-        filtroAtivos={filtroAtivos}
-        showFiltros={showFiltros}
-      />
-      {showFiltros && (
+      {!compactOverlays && <MapControls
+          zoom={zoom}
+          onZoomIn={() => setZoom(z => Math.min(3, z + 0.2))}
+          onZoomOut={() => setZoom(z => Math.max(0.6, z - 0.2))}
+          onReset={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
+          theme={T}
+          onToggleFiltros={() => setShowFiltros(f => !f)}
+          filtroAtivos={filtroAtivos}
+          showFiltros={showFiltros}
+        />}
+      {!compactOverlays && showFiltros && (
         <MapFilters
           filtros={filtros}
           setFiltros={setFiltros}
@@ -461,8 +516,8 @@ export function MapView({ loteamento, mapTheme = 'claro', onLotClick, selectedLo
           onClose={() => setShowFiltros(false)}
         />
       )}
-      <MapLegend counts={counts} theme={T} />
-      <MapInfoBadge loteamento={loteamento} theme={T} />
+      {showInfoOverlays && !compactOverlays && <MapLegend counts={counts} theme={T} />}
+      {showInfoOverlays && !compactOverlays && <MapInfoBadge loteamento={loteamento} theme={T} />}
     </div>
   );
 }
@@ -528,7 +583,7 @@ function MapFilters({ filtros, setFiltros, quadras, onClose }) {
   const sectionLabel = { fontSize: '0.65rem', fontWeight: 700, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.05em', display: 'block' };
 
   return (
-    <div style={{
+    <div className="map-filters" style={{
       position: 'absolute', top: 12, right: 12, zIndex: 10,
       background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(8px)',
       border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px',

@@ -746,6 +746,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    touch-action: none;
   }
   .map-canvas svg {
     max-width: 100%;
@@ -6898,4 +6899,140 @@ button, input, select, textarea { font: inherit; }
   .casa-form-wide {
     grid-column: auto;
   }
+}
+
+/* Public loteamento map */
+.public-map-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  background: #f8fafc;
+}
+.public-map-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+.public-map-heading { min-width: 0; }
+.public-map-heading h1 { overflow-wrap: anywhere; }
+.public-map-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 16px;
+}
+.public-map-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.public-map-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 400px;
+}
+.public-map-stage > .map-wrap {
+  position: absolute;
+  inset: 0;
+}
+.public-map-stage .map-info-badge,
+.public-map-stage .map-legend {
+  display: none !important;
+}
+.public-lot-detail {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  z-index: 10;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+  .public-map-page {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .public-map-header {
+    align-items: flex-start;
+    padding: 12px 14px;
+  }
+  .public-map-heading { flex: 1; }
+  .public-map-heading h1 { font-size: 1.05rem !important; line-height: 1.2; }
+  .public-map-summary {
+    flex: 0 0 128px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+  }
+  .public-map-stage { min-height: 0; }
+  .public-map-stage .map-info-badge {
+    display: none;
+  }
+  .public-map-stage .map-legend {
+    display: none;
+  }
+  .public-map-stage .map-ctrls {
+    right: 12px;
+    bottom: 12px;
+    flex-direction: row;
+    align-items: center;
+    padding: 2px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.82);
+    backdrop-filter: blur(8px);
+  }
+  .public-map-stage .map-ctrls .map-btn {
+    width: 38px;
+    height: 38px;
+    color: #fff;
+    border-radius: 999px;
+  }
+  .public-map-stage .map-ctrls .map-zoom-val { display: none; }
+  .public-map-stage .map-filters {
+    top: 12px !important;
+    right: 12px !important;
+    left: 12px;
+    width: auto !important;
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+  }
+  .public-lot-detail {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    flex: 0 0 auto;
+    min-width: 0 !important;
+    max-width: none;
+    width: 100%;
+    padding: 10px 14px !important;
+    gap: 12px !important;
+    transform: none;
+    flex-wrap: wrap;
+    border-width: 1px 0 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .lot-card-row { grid-template-columns: 1fr; }
+  .lcr-map { aspect-ratio: 16 / 8; }
+  .lcr-body { min-width: 0; padding: 14px; gap: 12px; }
+  .lcr-head { flex-direction: column; }
+  .lcr-head > div:last-child { width: 100%; flex-wrap: wrap; }
+  .lcr-open { min-height: 40px; margin-left: auto; }
+  .lcr-edit { min-width: 40px; min-height: 40px; }
+  .lcr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lcr-prog-legend { flex-wrap: wrap; gap: 6px 14px; }
 }

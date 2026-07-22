@@ -44,17 +44,17 @@ export default function LoteamentoPublicoPage() {
   const local = [data.bairro, data.cidade, data.estado].filter(Boolean).join(' · ');
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, sans-serif', background: '#f8fafc' }}>
+    <main className="public-map-page">
       {/* Header */}
-      <header style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-        <div>
+      <header className="public-map-header">
+        <div className="public-map-heading">
           <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 2 }}>
             {data.fase || 'Loteamento'}
           </div>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111', margin: 0 }}>{data.nome}</h1>
           {local && <div style={{ fontSize: '0.8rem', color: '#666', marginTop: 2 }}>📍 {local}</div>}
         </div>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        <div className="public-map-summary">
           {[
             { label: 'Disponíveis', value: counts.disponivel, color: '#2563eb' },
             { label: 'Reservados', value: counts.reservado, color: '#d97706' },
@@ -69,18 +69,21 @@ export default function LoteamentoPublicoPage() {
       </header>
 
       {/* Map */}
-      <div style={{ flex: 1, position: 'relative', minHeight: 400 }}>
-        <MapView
-          loteamento={data}
-          mapTheme="claro"
-          onLotClick={(lot, pos) => setSelectedLot(selectedLot?.id === lot.id ? null : lot)}
-          selectedLotId={selectedLot?.id}
-        />
+      <div className="public-map-body">
+        <section className="public-map-stage" aria-label="Mapa do loteamento">
+          <MapView
+            loteamento={data}
+            mapTheme="claro"
+            responsiveOverlays
+            showInfoOverlays={false}
+            onLotClick={(lot) => setSelectedLot(selectedLot?.id === lot.id ? null : lot)}
+            selectedLotId={selectedLot?.id}
+          />
+        </section>
 
         {/* Lot info tooltip */}
         {selectedLot && (
-          <div style={{
-            position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          <div className="public-lot-detail" style={{
             background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
             padding: '14px 20px', boxShadow: '0 4px 24px rgba(0,0,0,.12)',
             display: 'flex', gap: 24, alignItems: 'center', minWidth: 280,
@@ -139,6 +142,6 @@ export default function LoteamentoPublicoPage() {
           )}
         </div>
       )}
-    </div>
+    </main>
   );
 }
