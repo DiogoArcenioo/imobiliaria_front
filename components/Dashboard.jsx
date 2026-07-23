@@ -5,6 +5,7 @@ import { fmtBRL, fmtBRLShort, statusLabel } from '../lib/data';
 import { computeMetrics, flattenLots, getAgendaItems } from '../lib/api';
 import { userHasModule } from '../lib/modules';
 import { STATUS_COLORS } from './MapView';
+import { copyTemporaryPropertyLink } from '../lib/public-share';
 
 export const Dashboard = ({
   loteamentos = [],
@@ -624,6 +625,7 @@ function AgendaEventModal({ item, typeLabel, typeColor, onClose }) {
 // ── Exportados (usados em outros módulos) ────────────────────────────────────
 
 export function LoteamentoCard({ loteamento, onClick, onEdit, onToggleAtivo, toggling, canShare }) {
+  const [sharing, setSharing] = useState(false);
   const lots = loteamento.lots || [];
   const counts = { disponivel: 0, reservado: 0, vendido: 0 };
   for (const lot of lots) counts[lot.status] = (counts[lot.status] || 0) + 1;
@@ -682,19 +684,22 @@ export function LoteamentoCard({ loteamento, onClick, onEdit, onToggleAtivo, tog
                 </svg>
               </button>
             )}
-            {canShare && (
+            {canShare && !inativo && (
               <button
                 className="lcr-edit"
-                onClick={(e) => {
+                disabled={sharing}
+                onClick={async (e) => {
                   e.stopPropagation();
-                  const url = `${window.location.origin}/loteamento/${loteamento.id}`;
-                  if (navigator.clipboard) {
-                    navigator.clipboard.writeText(url).then(() => alert('Link copiado: ' + url));
-                  } else {
-                    window.open(url, '_blank');
+                  setSharing(true);
+                  try {
+                    await copyTemporaryPropertyLink('loteamento', loteamento.id, loteamento.nome);
+                  } catch (error) {
+                    alert(error.message || 'Nao foi possivel criar o link publico.');
+                  } finally {
+                    setSharing(false);
                   }
                 }}
-                title="Copiar link público do loteamento"
+                title="Copiar link publico valido por 7 dias"
               >
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                   <path d="M7 9a3 3 0 0 0 4.5.4l2-2A3 3 0 0 0 9 3L7.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>

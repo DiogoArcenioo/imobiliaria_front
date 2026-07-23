@@ -7,18 +7,18 @@ import { MapView, STATUS_COLORS } from '../../../components/MapView';
 import { fmtBRL } from '../../../lib/data';
 
 export default function LoteamentoPublicoPage() {
-  const { id } = useParams();
+  const { id: token } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [selectedLot, setSelectedLot] = useState(null);
   const [previewIndex, setPreviewIndex] = useState(null);
 
   useEffect(() => {
-    if (!id) return;
-    getLoteamentoPublico(id)
+    if (!token) return;
+    getLoteamentoPublico(token)
       .then(setData)
-      .catch(() => setError('Loteamento não encontrado ou indisponível.'));
-  }, [id]);
+      .catch((err) => setError(err.message || 'Loteamento não encontrado, indisponível ou com link expirado.'));
+  }, [token]);
 
   useEffect(() => {
     setPreviewIndex(null);
@@ -69,6 +69,7 @@ export default function LoteamentoPublicoPage() {
           </div>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111', margin: 0 }}>{data.nome}</h1>
           {local && <div style={{ fontSize: '0.8rem', color: '#666', marginTop: 2 }}>📍 {local}</div>}
+          {data.expira_em && <div style={{ fontSize: '0.68rem', color: '#7c8ba1', marginTop: 3 }}>Link válido até {new Date(data.expira_em).toLocaleDateString('pt-BR')}</div>}
         </div>
         <div className="public-map-summary">
           {[
