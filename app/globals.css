@@ -3999,6 +3999,8 @@ button, input, select, textarea { font: inherit; }
   opacity: .65;
 }
 .casa-photos-overlay { z-index: 2200; padding: 20px; }
+.photo-management-overlay { z-index: 100100; }
+.photo-management-viewer { z-index: 100200; }
 .casa-photos-dialog {
   width: min(880px, 100%); max-height: calc(100dvh - 40px); overflow: auto;
   border: 1px solid var(--border); border-radius: 16px; background: var(--surface);

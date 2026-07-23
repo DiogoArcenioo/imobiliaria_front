@@ -17,7 +17,7 @@ function PhotoViewer({ title, images, initialIndex, onClose }) {
   }, [images.length, onClose]);
 
   return createPortal(
-    <div className="lot-gallery-modal" role="dialog" aria-modal="true" aria-label={`Fotos de ${title}`} onClick={onClose}>
+    <div className="lot-gallery-modal photo-management-viewer" role="dialog" aria-modal="true" aria-label={`Fotos de ${title}`} onClick={onClose}>
       <div className="lot-gallery-dialog" onClick={(event) => event.stopPropagation()}>
         <div className="lot-gallery-title">
           <div><strong>{title}</strong><span>{activeIndex + 1} de {images.length}</span></div>
@@ -101,7 +101,7 @@ export default function PhotoManagementDialog({
 
   return createPortal(
     <>
-      <div className="modal-overlay casa-photos-overlay" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="modal-overlay casa-photos-overlay photo-management-overlay" onClick={(event) => event.target === event.currentTarget && onClose()}>
         <section className="casa-photos-dialog" role="dialog" aria-modal="true" aria-label={eyebrow}>
           <header>
             <div><span>{eyebrow}</span><h2>{title}</h2><p>{subtitle}</p></div>
