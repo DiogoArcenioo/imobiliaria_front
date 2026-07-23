@@ -16,6 +16,7 @@ import { House3DView } from './House3DView';
 import { LocacaoDialog } from './LocacoesPanel';
 import { SaleDialog } from './SaleDialog';
 import { NegociacaoDrawer } from './NegociacaoDrawer';
+import { copyTemporaryPropertyLink } from '../lib/public-share';
 
 const STATUS = {
   disponivel: { label: 'Disponivel', color: '#22c55e' },
@@ -583,6 +584,7 @@ function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, o
   );
   const [photosOpen, setPhotosOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const galleryPhotos = casa.fotos?.length ? casa.fotos : (casa.foto_url ? [casa.foto_url] : []);
   const coverPhoto = casa.capa_url || casa.foto_url;
 
@@ -641,6 +643,24 @@ function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, o
           </div>
         )}
         <div className="casa-card-actions">
+          {user && (
+            <button
+              className="table-action table-action-ghost"
+              disabled={sharing}
+              onClick={async () => {
+                setSharing(true);
+                try {
+                  await copyTemporaryPropertyLink('casa', casa.id, casa.nome);
+                } catch (error) {
+                  alert(error.message || 'Nao foi possivel criar o link publico.');
+                } finally {
+                  setSharing(false);
+                }
+              }}
+            >
+              {sharing ? 'Gerando link...' : 'Compartilhar'}
+            </button>
+          )}
           {casa.status !== 'vendido' && casa.status !== 'alugado' && (
             <>
               <button className="table-action table-action-ghost" onClick={() => onStatus(casa, 'reservado')}>Reservar</button>

@@ -6,6 +6,7 @@ import { fmtBRL } from '../lib/data';
 import { userHasModule } from '../lib/modules';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { deleteApartamentoImagem, uploadApartamentoImagens } from '../lib/api';
+import { copyTemporaryPropertyLink } from '../lib/public-share';
 
 function ApPriceEditor({ preco, area, canEdit, defaultMode = 'm2', onSave }) {
   const [editing, setEditing] = useState(false);
@@ -231,6 +232,7 @@ function ApartmentImageGallery({ ap, images, canEdit, onChange }) {
 
 export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, onUpdatePrice, onImagesChange, onOpenNegociacao, defaultPriceMode = 'm2', user }) {
   const [actionLoading, setActionLoading] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const cardRef = useRef(null);
   const initialStyle = position
     ? { left: position.left, top: position.top, transform: position.transform || 'none' }
@@ -326,11 +328,37 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
               {predio?.nome ? ` · ${predio.nome}` : ''}
             </p>
           </div>
-          <button className="apc-close" onClick={onClose} aria-label="Fechar">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
+          <div className="apc-head-actions">
+            {user && (
+              <button
+                className="apc-close"
+                type="button"
+                disabled={sharing}
+                title="Copiar link publico valido por 7 dias"
+                aria-label="Compartilhar apartamento"
+                onClick={async () => {
+                  setSharing(true);
+                  try {
+                    await copyTemporaryPropertyLink('apartamento', ap.id, `Apartamento ${ap.ap_id}`);
+                  } catch (error) {
+                    alert(error.message || 'Nao foi possivel criar o link publico.');
+                  } finally {
+                    setSharing(false);
+                  }
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M7 9a3 3 0 0 0 4.5.4l2-2A3 3 0 0 0 9 3L7.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                  <path d="M9 7a3 3 0 0 0-4.5-.4l-2 2A3 3 0 0 0 7 13l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+            <button className="apc-close" onClick={onClose} aria-label="Fechar">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         </header>
 
         <div className="apc-status-row">
