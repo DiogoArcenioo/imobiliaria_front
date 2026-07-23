@@ -3962,6 +3962,68 @@ button, input, select, textarea { font: inherit; }
   .lot-gallery-thumbs button { flex-basis: 70px; width: 70px; height: 52px; }
 }
 
+/* Galeria e foto de capa das casas */
+.casa-cover-button { width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; position: relative; display: block; }
+.casa-cover-button img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.casa-cover-button small {
+  position: absolute; right: 12px; bottom: 12px; padding: 5px 9px; border-radius: 999px;
+  background: rgba(15,23,42,.78); color: #fff; font-size: 11px; font-weight: 800;
+  backdrop-filter: blur(6px);
+}
+.casa-photos-overlay { z-index: 2200; padding: 20px; }
+.casa-photos-dialog {
+  width: min(880px, 100%); max-height: calc(100dvh - 40px); overflow: auto;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--surface);
+  box-shadow: 0 28px 80px rgba(15,23,42,.24);
+}
+.casa-photos-dialog > header {
+  position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 16px; padding: 20px 22px; border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.96); backdrop-filter: blur(10px);
+}
+.casa-photos-dialog > header span { color: var(--accent); font-size: 10px; font-weight: 900; letter-spacing: .12em; }
+.casa-photos-dialog > header h2 { margin: 3px 0 2px; font-size: 21px; }
+.casa-photos-dialog > header p { margin: 0; color: var(--text-muted); font-size: 12.5px; }
+.casa-photos-dialog > header > button {
+  width: 34px; height: 34px; flex: 0 0 auto; border: 0; border-radius: 9px;
+  background: var(--surface-2); color: var(--text-muted); cursor: pointer; font-size: 22px;
+}
+.casa-photos-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 22px 10px; }
+.casa-photos-toolbar label {
+  display: inline-flex; align-items: center; justify-content: center; padding: 9px 14px;
+  border-radius: 9px; background: var(--accent); color: #fff; cursor: pointer; font-size: 12px; font-weight: 800;
+}
+.casa-photos-toolbar label.disabled { opacity: .55; cursor: not-allowed; }
+.casa-photos-toolbar span { color: var(--text-muted); font-size: 12px; }
+.casa-photos-error { margin: 0 22px 10px; padding: 9px 12px; border-radius: 8px; background: #fef2f2; color: #b91c1c; font-size: 12px; }
+.casa-photos-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 10px 22px 24px; }
+.casa-photos-grid article { position: relative; overflow: hidden; border: 2px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.casa-photos-grid article.is-cover { border-color: var(--accent); }
+.casa-photo-preview { width: 100%; aspect-ratio: 4/3; padding: 0; border: 0; background: #e2e8f0; cursor: zoom-in; display: block; }
+.casa-photo-preview img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.casa-cover-badge {
+  position: absolute; top: 8px; left: 8px; padding: 4px 8px; border-radius: 999px;
+  background: var(--accent); color: #fff; font-size: 10px; font-weight: 900; text-transform: uppercase;
+}
+.casa-photos-grid article > div { display: flex; gap: 6px; padding: 8px; }
+.casa-photos-grid article > div button {
+  flex: 1; padding: 7px 6px; border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface); color: var(--text-mid); cursor: pointer; font-size: 10.5px; font-weight: 700;
+}
+.casa-photos-grid article > div button.danger { color: #dc2626; }
+.casa-photos-grid article > div button:disabled { opacity: .5; cursor: default; }
+.casa-photos-empty {
+  display: flex; align-items: center; justify-content: center; min-height: 220px; margin: 10px 22px 24px;
+  border: 2px dashed var(--border); border-radius: 12px; background: var(--surface-2);
+  color: var(--text-muted); cursor: pointer; font-size: 13px; font-weight: 700; text-align: center; padding: 24px;
+}
+@media (max-width: 700px) {
+  .casa-photos-overlay { padding: 0; }
+  .casa-photos-dialog { width: 100%; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
+  .casa-photos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-inline: 14px; }
+  .casa-photos-dialog > header, .casa-photos-toolbar { padding-inline: 14px; }
+}
+
 .rental-filter-tabs {
   display: inline-flex;
   align-items: center;

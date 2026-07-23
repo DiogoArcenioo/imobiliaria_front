@@ -1,8 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { fmtBRL } from '../lib/data';
-import { createEtapaUnidade, getEtapasUnidade, updateEtapa } from '../lib/api';
+import {
+  createEtapaUnidade,
+  deleteCasaFoto,
+  getEtapasUnidade,
+  setCasaFotoCapa,
+  updateEtapa,
+  uploadCasaFotos,
+} from '../lib/api';
 import { formatCpfCnpj } from './ClienteManagement';
 import { House3DView } from './House3DView';
 import { LocacaoDialog } from './LocacoesPanel';
@@ -421,7 +429,126 @@ function CasaForm({ initial, onConfirm, onCancel }) {
   );
 }
 
-function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, onNegociacao }) {
+function CasaGalleryModal({ casa, photos, initialIndex = 0, onClose }) {
+  const [activeIndex, setActiveIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowLeft') setActiveIndex((index) => (index - 1 + photos.length) % photos.length);
+      if (event.key === 'ArrowRight') setActiveIndex((index) => (index + 1) % photos.length);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [photos.length, onClose]);
+
+  if (!photos.length || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="lot-gallery-modal" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="lot-gallery-dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="lot-gallery-title">
+          <div><strong>{casa.nome}</strong><span>{activeIndex + 1} de {photos.length}</span></div>
+          <button type="button" onClick={onClose} aria-label="Fechar galeria">×</button>
+        </div>
+        <div className="lot-gallery-main">
+          <img src={photos[activeIndex]} alt={`${casa.nome} - foto ${activeIndex + 1}`} />
+          {photos.length > 1 && (
+            <>
+              <button type="button" className="lot-gallery-nav lot-gallery-prev" onClick={() => setActiveIndex((index) => (index - 1 + photos.length) % photos.length)}>‹</button>
+              <button type="button" className="lot-gallery-nav lot-gallery-next" onClick={() => setActiveIndex((index) => (index + 1) % photos.length)}>›</button>
+            </>
+          )}
+        </div>
+        <div className="lot-gallery-thumbs">
+          {photos.map((photo, index) => (
+            <button type="button" key={photo} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}>
+              <img src={photo} alt={`Selecionar foto ${index + 1}`} />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function CasaPhotosDialog({ casa, onClose, onChanged }) {
+  const [photos, setPhotos] = useState(casa.fotos || []);
+  const [cover, setCover] = useState(casa.capa_url || casa.foto_url || null);
+  const [busy, setBusy] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(null);
+  const [error, setError] = useState('');
+
+  const applyResult = async (result) => {
+    setPhotos(result.fotos || []);
+    setCover(result.capa_url || null);
+    await onChanged?.();
+  };
+
+  const upload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    setBusy(true); setError('');
+    try { await applyResult(await uploadCasaFotos(casa.id, files)); }
+    catch (err) { setError(err.message || 'Erro ao enviar fotos'); }
+    finally { setBusy(false); }
+  };
+
+  const chooseCover = async (photo) => {
+    setBusy(true); setError('');
+    try { await applyResult(await setCasaFotoCapa(casa.id, photo)); }
+    catch (err) { setError(err.message || 'Erro ao definir a capa'); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (photo) => {
+    if (!confirm('Remover esta foto da casa?')) return;
+    setBusy(true); setError('');
+    try { await applyResult(await deleteCasaFoto(casa.id, photo)); }
+    catch (err) { setError(err.message || 'Erro ao remover a foto'); }
+    finally { setBusy(false); }
+  };
+
+  return createPortal(
+    <div className="modal-overlay casa-photos-overlay" onClick={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="casa-photos-dialog" role="dialog" aria-modal="true">
+        <header>
+          <div><span>FOTOS DA CASA</span><h2>{casa.nome}</h2><p>Escolha uma capa e adicione fotos dos comodos.</p></div>
+          <button type="button" onClick={onClose} aria-label="Fechar">×</button>
+        </header>
+        <div className="casa-photos-toolbar">
+          <label className={busy || photos.length >= 20 ? 'disabled' : ''}>
+            {busy ? 'Salvando...' : '+ Adicionar fotos'}
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={busy || photos.length >= 20} onChange={upload} />
+          </label>
+          <span>{photos.length}/20 fotos</span>
+        </div>
+        {error && <div className="casa-photos-error">{error}</div>}
+        {photos.length ? (
+          <div className="casa-photos-grid">
+            {photos.map((photo, index) => (
+              <article key={photo} className={cover === photo ? 'is-cover' : ''}>
+                <button type="button" className="casa-photo-preview" onClick={() => setViewerIndex(index)}><img src={photo} alt={`${casa.nome} - foto ${index + 1}`} /></button>
+                {cover === photo && <span className="casa-cover-badge">Capa</span>}
+                <div>
+                  <button type="button" onClick={() => chooseCover(photo)} disabled={busy || cover === photo}>{cover === photo ? 'Foto de capa' : 'Usar como capa'}</button>
+                  <button type="button" className="danger" onClick={() => remove(photo)} disabled={busy}>Remover</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <label className="casa-photos-empty">Adicionar a foto de capa e imagens dos comodos<input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={upload} /></label>
+        )}
+      </section>
+      {viewerIndex !== null && <CasaGalleryModal casa={casa} photos={photos} initialIndex={viewerIndex} onClose={() => setViewerIndex(null)} />}
+    </div>,
+    document.body,
+  );
+}
+
+function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, onNegociacao, onPhotosChanged }) {
   const status = STATUS[casa.status] || STATUS.disponivel;
   const location = [casa.endereco, casa.numero, casa.bairro, casa.cidade, casa.estado].filter(Boolean).join(' - ');
   const mainPrice = casa.status === 'alugado' || casa.tipo === 'aluguel'
@@ -430,12 +557,19 @@ function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, o
   const canSeeNegociacao = ['reservado', 'vendido'].includes(casa.status) && user && (
     user.role === 'admin' || user.role === 'gerente' || user.id === casa.cliente_vinculado_por
   );
+  const [photosOpen, setPhotosOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const galleryPhotos = casa.fotos?.length ? casa.fotos : (casa.foto_url ? [casa.foto_url] : []);
+  const coverPhoto = casa.capa_url || casa.foto_url;
 
   return (
     <article className="casa-card">
       <div className="casa-card-photo">
-        {casa.foto_url ? (
-          <img src={casa.foto_url} alt={casa.nome} />
+        {coverPhoto ? (
+          <button type="button" className="casa-cover-button" onClick={() => setViewerOpen(true)} aria-label="Abrir fotos da casa">
+            <img src={coverPhoto} alt={casa.nome} />
+            {galleryPhotos.length > 1 && <small>{galleryPhotos.length} fotos</small>}
+          </button>
         ) : (
           <House3DView casa={casa} />
         )}
@@ -483,12 +617,15 @@ function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, o
           )}
           {canManage && (
             <>
+              <button className="table-action table-action-ghost" onClick={() => setPhotosOpen(true)}>Fotos</button>
               <button className="table-action table-action-ghost" onClick={() => onEdit(casa)}>Editar</button>
               <button className="table-action table-action-ghost" style={{ color: '#dc2626' }} onClick={() => onDelete(casa)}>Remover</button>
             </>
           )}
         </div>
       </div>
+      {viewerOpen && galleryPhotos.length > 0 && <CasaGalleryModal casa={casa} photos={galleryPhotos} onClose={() => setViewerOpen(false)} />}
+      {photosOpen && <CasaPhotosDialog casa={casa} onClose={() => setPhotosOpen(false)} onChanged={onPhotosChanged} />}
     </article>
   );
 }
@@ -849,6 +986,7 @@ export function CasasPanel({
               onStatus={(item, status) => status === 'disponivel' ? onUpdateStatus(item, status) : setStatusDialog({ casa: item, status })}
               onRent={setLocacaoCasa}
               onNegociacao={setNegociacaoCasa}
+              onPhotosChanged={onRefresh}
             />
           ))}
         </div>
