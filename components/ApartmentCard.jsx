@@ -5,8 +5,9 @@ import { createPortal } from 'react-dom';
 import { fmtBRL } from '../lib/data';
 import { userHasModule } from '../lib/modules';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
-import { deleteApartamentoImagem, uploadApartamentoImagens } from '../lib/api';
+import { deleteApartamentoImagem, setApartamentoImagemCapa, uploadApartamentoImagens } from '../lib/api';
 import { copyTemporaryPropertyLink } from '../lib/public-share';
+import PhotoManagementDialog from './PhotoManagementDialog';
 
 function ApPriceEditor({ preco, area, canEdit, defaultMode = 'm2', onSave }) {
   const [editing, setEditing] = useState(false);
@@ -183,49 +184,41 @@ function ApartmentImageModal({ ap, images, initialIndex, onClose }) {
 }
 
 function ApartmentImageGallery({ ap, images, canEdit, onChange }) {
-  const inputRef = useRef(null);
-  const [busy, setBusy] = useState(false);
   const [modalIndex, setModalIndex] = useState(null);
-
-  const upload = async (event) => {
-    const files = Array.from(event.target.files || []);
-    event.target.value = '';
-    if (!files.length) return;
-    setBusy(true);
-    try { const result = await uploadApartamentoImagens(ap.id, files); onChange(result.imagens || []); }
-    catch (error) { alert(error.message || 'Nao foi possivel enviar as imagens.'); }
-    finally { setBusy(false); }
-  };
-
-  const remove = async (imageUrl) => {
-    if (!confirm('Remover esta imagem do apartamento?')) return;
-    setBusy(true);
-    try { const result = await deleteApartamentoImagem(ap.id, imageUrl); onChange(result.imagens || []); }
-    catch (error) { alert(error.message || 'Nao foi possivel remover a imagem.'); }
-    finally { setBusy(false); }
-  };
+  const [managerOpen, setManagerOpen] = useState(false);
 
   if (!images.length && !canEdit) return null;
   return (
     <section className="apc-images">
       <div className="lot-image-gallery-head">
         <span>Imagens do apartamento</span>
-        {canEdit && images.length < 10 && <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}>{busy ? 'Enviando...' : '+ Adicionar'}</button>}
+        {canEdit && <button type="button" onClick={() => setManagerOpen(true)}>+ Adicionar</button>}
       </div>
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={upload} />
       {images.length ? (
         <div className="lot-image-grid">
           {images.map((imageUrl, index) => (
             <div className="lot-image-thumb" key={imageUrl}>
               <button type="button" className="lot-image-open" onClick={() => setModalIndex(index)}><img src={imageUrl} alt={`Apartamento ${ap.ap_id} - imagem ${index + 1}`} /></button>
-              {canEdit && <button type="button" className="lot-image-remove" onClick={() => remove(imageUrl)} disabled={busy}>×</button>}
             </div>
           ))}
         </div>
       ) : (
-        <button type="button" className="lot-image-empty" onClick={() => inputRef.current?.click()} disabled={busy}>Adicionar fotos deste apartamento</button>
+        <button type="button" className="lot-image-empty" onClick={() => setManagerOpen(true)}>Adicionar fotos deste apartamento</button>
       )}
       {modalIndex !== null && <ApartmentImageModal ap={ap} images={images} initialIndex={modalIndex} onClose={() => setModalIndex(null)} />}
+      {managerOpen && (
+        <PhotoManagementDialog
+          eyebrow="FOTOS DO APARTAMENTO"
+          title={`Apartamento ${ap.ap_id}`}
+          subtitle="Escolha uma capa e adicione fotos dos cômodos."
+          images={images}
+          onUpload={(files) => uploadApartamentoImagens(ap.id, files)}
+          onSetCover={(imageUrl) => setApartamentoImagemCapa(ap.id, imageUrl)}
+          onRemove={(imageUrl) => deleteApartamentoImagem(ap.id, imageUrl)}
+          onChange={onChange}
+          onClose={() => setManagerOpen(false)}
+        />
+      )}
     </section>
   );
 }

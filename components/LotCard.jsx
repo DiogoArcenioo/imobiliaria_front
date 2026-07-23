@@ -5,7 +5,8 @@ import { createPortal } from 'react-dom';
 import { fmtBRL, statusLabel as getStatusLabel } from '../lib/data';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
 import { STATUS_COLORS } from './MapView';
-import { deleteLoteImagem, getLotePrecoHistorico, uploadLoteImagens } from '../lib/api';
+import { deleteLoteImagem, getLotePrecoHistorico, setLoteImagemCapa, uploadLoteImagens } from '../lib/api';
+import PhotoManagementDialog from './PhotoManagementDialog';
 
 function imprimirFichaLote(lot, loteamento) {
   const fmtV = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -195,37 +196,8 @@ function LotImageModal({ lot, images, initialIndex, onClose }) {
 }
 
 function LotImageGallery({ lot, images, canEdit, onChange }) {
-  const inputRef = useRef(null);
-  const [busy, setBusy] = useState(false);
   const [modalIndex, setModalIndex] = useState(null);
-
-  const upload = async (event) => {
-    const files = Array.from(event.target.files || []);
-    event.target.value = '';
-    if (!files.length) return;
-    setBusy(true);
-    try {
-      const result = await uploadLoteImagens(lot.db_id, files);
-      onChange(result.imagens || []);
-    } catch (error) {
-      alert(error.message || 'Nao foi possivel enviar as imagens.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async (imageUrl) => {
-    if (!confirm('Remover esta imagem do lote?')) return;
-    setBusy(true);
-    try {
-      const result = await deleteLoteImagem(lot.db_id, imageUrl);
-      onChange(result.imagens || []);
-    } catch (error) {
-      alert(error.message || 'Nao foi possivel remover a imagem.');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [managerOpen, setManagerOpen] = useState(false);
 
   if (!images.length && !canEdit) return null;
 
@@ -233,13 +205,8 @@ function LotImageGallery({ lot, images, canEdit, onChange }) {
     <div className="lot-image-gallery">
       <div className="lot-image-gallery-head">
         <span>Imagens do lote</span>
-        {canEdit && images.length < 10 && (
-          <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}>
-            {busy ? 'Enviando...' : '+ Adicionar'}
-          </button>
-        )}
+        {canEdit && <button type="button" onClick={() => setManagerOpen(true)}>+ Adicionar</button>}
       </div>
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={upload} />
       {images.length > 0 ? (
         <div className="lot-image-grid">
           {images.map((imageUrl, index) => (
@@ -247,19 +214,29 @@ function LotImageGallery({ lot, images, canEdit, onChange }) {
               <button type="button" className="lot-image-open" onClick={() => setModalIndex(index)} title={`Abrir imagem ${index + 1}`}>
                 <img src={imageUrl} alt={`Lote ${lot.id} - imagem ${index + 1}`} />
               </button>
-              {canEdit && (
-                <button type="button" className="lot-image-remove" onClick={() => remove(imageUrl)} disabled={busy} aria-label="Remover imagem">×</button>
-              )}
             </div>
           ))}
         </div>
       ) : (
-        <button type="button" className="lot-image-empty" onClick={() => inputRef.current?.click()} disabled={busy}>
+        <button type="button" className="lot-image-empty" onClick={() => setManagerOpen(true)}>
           Adicionar fotos deste lote
         </button>
       )}
       {modalIndex !== null && (
         <LotImageModal lot={lot} images={images} initialIndex={modalIndex} onClose={() => setModalIndex(null)} />
+      )}
+      {managerOpen && (
+        <PhotoManagementDialog
+          eyebrow="FOTOS DO LOTE"
+          title={`Lote ${lot.id}`}
+          subtitle="Escolha uma capa e adicione fotos do lote."
+          images={images}
+          onUpload={(files) => uploadLoteImagens(lot.db_id, files)}
+          onSetCover={(imageUrl) => setLoteImagemCapa(lot.db_id, imageUrl)}
+          onRemove={(imageUrl) => deleteLoteImagem(lot.db_id, imageUrl)}
+          onChange={onChange}
+          onClose={() => setManagerOpen(false)}
+        />
       )}
     </div>
   );
