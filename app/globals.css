@@ -3970,6 +3970,34 @@ button, input, select, textarea { font: inherit; }
   background: rgba(15,23,42,.78); color: #fff; font-size: 11px; font-weight: 800;
   backdrop-filter: blur(6px);
 }
+.casa-share-button {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 4;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #41678f;
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(197,211,226,.9);
+  border-radius: 11px;
+  box-shadow: 0 5px 16px rgba(15,29,53,.14);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: transform .15s ease, color .15s ease, background .15s ease;
+}
+.casa-share-button:hover:not(:disabled) {
+  color: #1f7ed8;
+  background: #fff;
+  transform: translateY(-1px);
+}
+.casa-share-button:disabled {
+  cursor: wait;
+  opacity: .65;
+}
 .casa-photos-overlay { z-index: 2200; padding: 20px; }
 .casa-photos-dialog {
   width: min(880px, 100%); max-height: calc(100dvh - 40px); overflow: auto;

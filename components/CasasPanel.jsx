@@ -600,6 +600,31 @@ function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, o
           <House3DView casa={casa} />
         )}
         <span style={{ background: status.color }}>{status.label}</span>
+        {user && (
+          <button
+            type="button"
+            className="casa-share-button"
+            disabled={sharing}
+            title="Copiar link publico valido por 7 dias"
+            aria-label="Compartilhar casa"
+            onClick={async (event) => {
+              event.stopPropagation();
+              setSharing(true);
+              try {
+                await copyTemporaryPropertyLink('casa', casa.id, casa.nome);
+              } catch (error) {
+                alert(error.message || 'Nao foi possivel criar o link publico.');
+              } finally {
+                setSharing(false);
+              }
+            }}
+          >
+            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M7 9a3 3 0 0 0 4.5.4l2-2A3 3 0 0 0 9 3L7.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M9 7a3 3 0 0 0-4.5-.4l-2 2A3 3 0 0 0 7 13l1.5-1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
       </div>
       <div className="casa-card-body">
         <div className="casa-card-head">
@@ -643,24 +668,6 @@ function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, o
           </div>
         )}
         <div className="casa-card-actions">
-          {user && (
-            <button
-              className="table-action table-action-ghost"
-              disabled={sharing}
-              onClick={async () => {
-                setSharing(true);
-                try {
-                  await copyTemporaryPropertyLink('casa', casa.id, casa.nome);
-                } catch (error) {
-                  alert(error.message || 'Nao foi possivel criar o link publico.');
-                } finally {
-                  setSharing(false);
-                }
-              }}
-            >
-              {sharing ? 'Gerando link...' : 'Compartilhar'}
-            </button>
-          )}
           {casa.status !== 'vendido' && casa.status !== 'alugado' && (
             <>
               <button className="table-action table-action-ghost" onClick={() => onStatus(casa, 'reservado')}>Reservar</button>
