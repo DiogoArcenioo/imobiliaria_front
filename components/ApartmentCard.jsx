@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { fmtBRL } from '../lib/data';
 import { userHasModule } from '../lib/modules';
 import { formatCpfCnpj, formatPhone } from './ClienteManagement';
+import { deleteApartamentoImagem, uploadApartamentoImagens } from '../lib/api';
 
 function ApPriceEditor({ preco, area, canEdit, defaultMode = 'm2', onSave }) {
   const [editing, setEditing] = useState(false);
@@ -123,13 +125,103 @@ function Metric({ label, value, suffix }) {
   );
 }
 
-export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, onUpdatePrice, defaultPriceMode = 'm2', user }) {
+function ApartmentImageModal({ ap, images, initialIndex, onClose }) {
+  const [activeIndex, setActiveIndex] = useState(initialIndex);
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowLeft') setActiveIndex((index) => (index - 1 + images.length) % images.length);
+      if (event.key === 'ArrowRight') setActiveIndex((index) => (index + 1) % images.length);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [images.length, onClose]);
+  if (!images.length || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="lot-gallery-modal" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="lot-gallery-dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="lot-gallery-title">
+          <div><strong>Apartamento {ap.ap_id}</strong><span>{activeIndex + 1} de {images.length}</span></div>
+          <button type="button" onClick={onClose} aria-label="Fechar galeria">×</button>
+        </div>
+        <div className="lot-gallery-main">
+          <img src={images[activeIndex]} alt={`Apartamento ${ap.ap_id} - imagem ${activeIndex + 1}`} />
+          {images.length > 1 && <>
+            <button type="button" className="lot-gallery-nav lot-gallery-prev" onClick={() => setActiveIndex((index) => (index - 1 + images.length) % images.length)}>‹</button>
+            <button type="button" className="lot-gallery-nav lot-gallery-next" onClick={() => setActiveIndex((index) => (index + 1) % images.length)}>›</button>
+          </>}
+        </div>
+        <div className="lot-gallery-thumbs">
+          {images.map((imageUrl, index) => (
+            <button type="button" key={imageUrl} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}>
+              <img src={imageUrl} alt={`Selecionar imagem ${index + 1}`} />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function ApartmentImageGallery({ ap, images, canEdit, onChange }) {
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [modalIndex, setModalIndex] = useState(null);
+
+  const upload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    setBusy(true);
+    try { const result = await uploadApartamentoImagens(ap.id, files); onChange(result.imagens || []); }
+    catch (error) { alert(error.message || 'Nao foi possivel enviar as imagens.'); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (imageUrl) => {
+    if (!confirm('Remover esta imagem do apartamento?')) return;
+    setBusy(true);
+    try { const result = await deleteApartamentoImagem(ap.id, imageUrl); onChange(result.imagens || []); }
+    catch (error) { alert(error.message || 'Nao foi possivel remover a imagem.'); }
+    finally { setBusy(false); }
+  };
+
+  if (!images.length && !canEdit) return null;
+  return (
+    <section className="apc-images">
+      <div className="lot-image-gallery-head">
+        <span>Imagens do apartamento</span>
+        {canEdit && images.length < 10 && <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}>{busy ? 'Enviando...' : '+ Adicionar'}</button>}
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={upload} />
+      {images.length ? (
+        <div className="lot-image-grid">
+          {images.map((imageUrl, index) => (
+            <div className="lot-image-thumb" key={imageUrl}>
+              <button type="button" className="lot-image-open" onClick={() => setModalIndex(index)}><img src={imageUrl} alt={`Apartamento ${ap.ap_id} - imagem ${index + 1}`} /></button>
+              {canEdit && <button type="button" className="lot-image-remove" onClick={() => remove(imageUrl)} disabled={busy}>×</button>}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <button type="button" className="lot-image-empty" onClick={() => inputRef.current?.click()} disabled={busy}>Adicionar fotos deste apartamento</button>
+      )}
+      {modalIndex !== null && <ApartmentImageModal ap={ap} images={images} initialIndex={modalIndex} onClose={() => setModalIndex(null)} />}
+    </section>
+  );
+}
+
+export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, onUpdatePrice, onImagesChange, defaultPriceMode = 'm2', user }) {
   const [actionLoading, setActionLoading] = useState(false);
   const cardRef = useRef(null);
   const initialStyle = position
     ? { left: position.left, top: position.top, transform: position.transform || 'none' }
     : { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' };
   const [adjustedStyle, setAdjustedStyle] = useState(initialStyle);
+  const [images, setImages] = useState(ap?.imagens || []);
+
+  useEffect(() => { setImages(ap?.imagens || []); }, [ap?.id, ap?.imagens]);
 
   useLayoutEffect(() => {
     if (!cardRef.current) return;
@@ -254,6 +346,13 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
           <Metric label="Quartos" value={ap.quartos ?? null} />
           <Metric label="Banheiros" value={ap.banheiros ?? null} />
         </div>
+
+        <ApartmentImageGallery
+          ap={ap}
+          images={images}
+          canEdit={isAdminOrManager}
+          onChange={(nextImages) => { setImages(nextImages); onImagesChange?.(nextImages); }}
+        />
 
         {ap.cliente && (
           <section className="apc-client">

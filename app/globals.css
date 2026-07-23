@@ -5765,6 +5765,9 @@ button, input, select, textarea { font: inherit; }
   gap: 8px;
   padding: 0 20px 18px;
 }
+.apc-images {
+  padding: 0 20px 18px;
+}
 .apc-metric {
   min-width: 0;
   padding: 11px 10px;

@@ -435,6 +435,10 @@ export function PredioManagement({
                 setSelectedAp((prev) => prev ? { ...prev, ...(updated || {}), preco_venda: updated?.preco_venda ?? novoPreco } : prev);
                 await onRefresh?.();
               } : undefined}
+              onImagesChange={(imagens) => {
+                setSelectedAp((current) => current ? { ...current, imagens } : current);
+                onRefresh?.();
+              }}
               defaultPriceMode="m2"
               user={user}
             />
