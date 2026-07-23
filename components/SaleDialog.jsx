@@ -12,6 +12,10 @@ function clientLabel(cliente) {
 export function SaleDialog({
   lot,
   loteamento,
+  entityLabel = "Lote",
+  entityName,
+  contextName,
+  price,
   actionStatus = "vendido",
   clientes = [],
   loading = false,
@@ -28,8 +32,11 @@ export function SaleDialog({
   const [saving, setSaving] = useState(false);
   const isReserva = actionStatus === "reservado";
   const actionLabel = isReserva ? "reserva" : "venda";
-  const actionTitle = isReserva ? "RESERVAR LOTE" : "VENDER LOTE";
+  const actionTitle = `${isReserva ? "RESERVAR" : "VENDER"} ${entityLabel.toUpperCase()}`;
   const confirmLabel = isReserva ? "Confirmar reserva" : "Confirmar venda";
+  const displayName = entityName ?? lot?.id;
+  const displayContext = contextName ?? loteamento?.nome ?? entityLabel;
+  const displayPrice = price ?? lot?.preco;
 
   useEffect(() => {
     setSelected(initialClient || null);
@@ -37,7 +44,9 @@ export function SaleDialog({
   }, [initialClient]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => onSearch?.(query), 220);
+    const timeout = setTimeout(() => {
+      Promise.resolve(onSearch?.(query)).catch(() => {});
+    }, 220);
     return () => clearTimeout(timeout);
   }, [query, onSearch]);
 
@@ -62,7 +71,7 @@ export function SaleDialog({
     }
   }
 
-  if (!lot) return null;
+  if (!lot && !displayName) return null;
 
   return (
     <div className="sale-modal-backdrop">
@@ -70,8 +79,8 @@ export function SaleDialog({
         <header className="sale-modal-head">
           <div>
             <div className="dash-eyebrow">{actionTitle}</div>
-            <h2>Lote {lot.id}</h2>
-            <p>{loteamento?.nome || "Loteamento"} - {fmtBRL(lot.preco)}</p>
+            <h2>{entityLabel} {displayName}</h2>
+            <p>{displayContext}{displayPrice != null ? ` - ${fmtBRL(displayPrice)}` : ""}</p>
           </div>
           <button className="sale-modal-close" onClick={onClose} aria-label="Fechar">
             <svg width="14" height="14" viewBox="0 0 14 14">
@@ -92,9 +101,11 @@ export function SaleDialog({
               placeholder="Buscar por nome, CPF ou CNPJ"
             />
           </label>
-          <button className="qa-btn qa-btn-primary sale-new-client" onClick={onCreateClient}>
-            Cadastrar cliente
-          </button>
+          {onCreateClient && (
+            <button className="qa-btn qa-btn-primary sale-new-client" onClick={onCreateClient}>
+              Cadastrar cliente
+            </button>
+          )}
         </div>
 
         <div className="sale-client-results">

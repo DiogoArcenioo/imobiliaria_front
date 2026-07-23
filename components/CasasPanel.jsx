@@ -14,6 +14,7 @@ import {
 import { formatCpfCnpj } from './ClienteManagement';
 import { House3DView } from './House3DView';
 import { LocacaoDialog } from './LocacoesPanel';
+import { SaleDialog } from './SaleDialog';
 
 const STATUS = {
   disponivel: { label: 'Disponivel', color: '#22c55e' },
@@ -33,6 +34,28 @@ const COMODO_FIELD = {
 function clientLabel(cliente) {
   if (!cliente) return '';
   return `${cliente.nome} - ${formatCpfCnpj(cliente.cpf_cnpj)}`;
+}
+
+function CasaReservaDialog({ casa, clientes, onSearchClientes, onCreateClient, onConfirm, onCancel }) {
+  return (
+    <SaleDialog
+      lot={casa}
+      entityLabel="Casa"
+      entityName={casa.nome}
+      contextName={casa.codigo || [casa.cidade, casa.estado].filter(Boolean).join(' - ') || 'Casa'}
+      price={casa.preco_venda}
+      actionStatus="reservado"
+      clientes={clientes}
+      onSearch={onSearchClientes}
+      onClose={onCancel}
+      onCreateClient={onCreateClient}
+      onConfirm={(cliente, observacao) => onConfirm({
+        clienteId: cliente.id,
+        observacao,
+        dataVenda: undefined,
+      })}
+    />
+  );
 }
 
 function CasaStatusDialog({ casa, status, clientes, onSearchClientes, onConfirm, onCancel }) {
@@ -922,6 +945,7 @@ export function CasasPanel({
   onUpdateStatus,
   onCreateLocacao,
   onSearchClientes,
+  onCreateClient,
   onRefresh,
 }) {
   const [formCasa, setFormCasa] = useState(null);
@@ -1003,17 +1027,31 @@ export function CasasPanel({
         />
       )}
       {statusDialog && (
-        <CasaStatusDialog
-          casa={statusDialog.casa}
-          status={statusDialog.status}
-          clientes={clientes}
-          onSearchClientes={onSearchClientes}
-          onCancel={() => setStatusDialog(null)}
-          onConfirm={async ({ clienteId, observacao, dataVenda }) => {
-            await onUpdateStatus(statusDialog.casa, statusDialog.status, clienteId, observacao, dataVenda);
-            setStatusDialog(null);
-          }}
-        />
+        statusDialog.status === 'reservado' ? (
+          <CasaReservaDialog
+            casa={statusDialog.casa}
+            clientes={clientes}
+            onSearchClientes={onSearchClientes}
+            onCreateClient={onCreateClient}
+            onCancel={() => setStatusDialog(null)}
+            onConfirm={async ({ clienteId, observacao, dataVenda }) => {
+              await onUpdateStatus(statusDialog.casa, statusDialog.status, clienteId, observacao, dataVenda);
+              setStatusDialog(null);
+            }}
+          />
+        ) : (
+          <CasaStatusDialog
+            casa={statusDialog.casa}
+            status={statusDialog.status}
+            clientes={clientes}
+            onSearchClientes={onSearchClientes}
+            onCancel={() => setStatusDialog(null)}
+            onConfirm={async ({ clienteId, observacao, dataVenda }) => {
+              await onUpdateStatus(statusDialog.casa, statusDialog.status, clienteId, observacao, dataVenda);
+              setStatusDialog(null);
+            }}
+          />
+        )
       )}
       {locacaoCasa && (
         <LocacaoDialog

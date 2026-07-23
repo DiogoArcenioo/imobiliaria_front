@@ -1263,6 +1263,10 @@ export default function ImobiliariaApp() {
               onUpdateStatus={onUpdateCasaStatus}
               onCreateLocacao={onCreateCasaLocacao}
               onSearchClientes={searchClientesSilently}
+              onCreateClient={() => {
+                setView("clientes");
+                fetchClientes("");
+              }}
               onRefresh={fetchCasas}
             />
           )}
@@ -1306,6 +1310,11 @@ export default function ImobiliariaApp() {
               defaultApM2={defaultApM2}
               clientes={clientes}
               user={user}
+              onSearchClientes={searchClientesSilently}
+              onCreateClient={() => {
+                setView("clientes");
+                fetchClientes("");
+              }}
               onRefresh={() => Promise.all([refreshPredio(activePredioId), fetchLocacoes()])}
               onStartEditingAndar={() => setEditingAndar(true)}
               onStopEditingAndar={() => setEditingAndar(false)}

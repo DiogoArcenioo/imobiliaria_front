@@ -8,10 +8,33 @@ import { formatCpfCnpj } from './ClienteManagement';
 import { EncerrarLocacaoDialog, LocacaoDialog, LocacoesPanel } from './LocacoesPanel';
 import { createLocacao, encerrarLocacao, getLocacoes, getLocacoesResumo } from '../lib/api';
 import { userHasModule } from '../lib/modules';
+import { SaleDialog } from './SaleDialog';
 
 function clientLabel(c) {
   if (!c) return '';
   return `${c.nome} — ${formatCpfCnpj(c.cpf_cnpj)}`;
+}
+
+function ApReservaDialog({ ap, predio, clientes, onSearchClientes, onCreateClient, onConfirm, onCancel }) {
+  return (
+    <SaleDialog
+      lot={ap}
+      entityLabel="Apartamento"
+      entityName={ap.ap_id}
+      contextName={predio?.nome || 'Prédio'}
+      price={ap.preco_venda}
+      actionStatus="reservado"
+      clientes={clientes}
+      onSearch={onSearchClientes}
+      onClose={onCancel}
+      onCreateClient={onCreateClient}
+      onConfirm={(cliente, observacao) => onConfirm({
+        clienteId: cliente.id,
+        observacao,
+        dataVenda: undefined,
+      })}
+    />
+  );
 }
 
 function ApStatusDialog({ ap, status, clientes, onConfirm, onCancel }) {
@@ -140,6 +163,8 @@ export function PredioManagement({
   defaultApM2 = 700,
   clientes = [],
   user,
+  onSearchClientes,
+  onCreateClient,
   onRefresh,
   onStartEditingAndar,
   onStopEditingAndar,
@@ -448,13 +473,25 @@ export function PredioManagement({
 
       {/* Status dialog */}
       {statusDialog && (
-        <ApStatusDialog
-          ap={statusDialog.ap}
-          status={statusDialog.status}
-          clientes={clientes}
-          onConfirm={handleStatusDialogConfirm}
-          onCancel={() => setStatusDialog(null)}
-        />
+        statusDialog.status === 'reservado' ? (
+          <ApReservaDialog
+            ap={statusDialog.ap}
+            predio={predio}
+            clientes={clientes}
+            onSearchClientes={onSearchClientes}
+            onCreateClient={onCreateClient}
+            onConfirm={handleStatusDialogConfirm}
+            onCancel={() => setStatusDialog(null)}
+          />
+        ) : (
+          <ApStatusDialog
+            ap={statusDialog.ap}
+            status={statusDialog.status}
+            clientes={clientes}
+            onConfirm={handleStatusDialogConfirm}
+            onCancel={() => setStatusDialog(null)}
+          />
+        )
       )}
       {locacaoDialog && (
         <LocacaoDialog
