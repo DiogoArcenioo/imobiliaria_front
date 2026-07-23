@@ -10,6 +10,7 @@ import {
 } from '../lib/api';
 import { fmtBRL, fmtBRLShort } from '../lib/data';
 import { formatCpfCnpj } from './ClienteManagement';
+import { NegociacaoDrawer } from './NegociacaoDrawer';
 
 function fmtDate(value) {
   if (!value) return '-';
@@ -65,7 +66,7 @@ function historicalValueFor(etapas, index, currentValue) {
   return currentValue;
 }
 
-export function ComercialPanel() {
+export function ComercialPanel({ user }) {
   const [reservas, setReservas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -236,10 +237,16 @@ export function ComercialPanel() {
       )}
 
       {negociando && (
-        <ComercialNegociacaoDrawer
-          item={negociando}
+        <NegociacaoDrawer
+          unitType={negociando.tipo}
+          unitId={negociando.id}
+          title={`${tipoLabel(negociando.tipo)} ${negociando.codigo}`}
+          currentValue={negociando.valor}
+          clientName={negociando.cliente}
+          linkedByUserId={user?.role === 'vendedor' ? user.id : undefined}
+          user={user}
           onClose={() => setNegociando(null)}
-          onSaved={handleNegociacaoSaved}
+          onSaved={(ultimaEtapa) => handleNegociacaoSaved(negociando, ultimaEtapa)}
         />
       )}
 

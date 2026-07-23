@@ -9,6 +9,7 @@ import { EncerrarLocacaoDialog, LocacaoDialog, LocacoesPanel } from './LocacoesP
 import { createLocacao, encerrarLocacao, getLocacoes, getLocacoesResumo } from '../lib/api';
 import { userHasModule } from '../lib/modules';
 import { SaleDialog } from './SaleDialog';
+import { NegociacaoDrawer } from './NegociacaoDrawer';
 
 function clientLabel(c) {
   if (!c) return '';
@@ -174,6 +175,7 @@ export function PredioManagement({
   const [selectedAp, setSelectedAp] = useState(null);
   const [apPos, setApPos] = useState(null);
   const [statusDialog, setStatusDialog] = useState(null);
+  const [negociacaoAp, setNegociacaoAp] = useState(null);
   const [locacaoDialog, setLocacaoDialog] = useState(null);
   const [section, setSection] = useState('predio');
   const [locacoes, setLocacoes] = useState([]);
@@ -464,6 +466,11 @@ export function PredioManagement({
                 setSelectedAp((current) => current ? { ...current, imagens } : current);
                 onRefresh?.();
               }}
+              onOpenNegociacao={() => {
+                setNegociacaoAp(selectedAp);
+                setSelectedAp(null);
+                setApPos(null);
+              }}
               defaultPriceMode="m2"
               user={user}
             />
@@ -492,6 +499,24 @@ export function PredioManagement({
             onCancel={() => setStatusDialog(null)}
           />
         )
+      )}
+      {negociacaoAp && (
+        <NegociacaoDrawer
+          unitType="apartamento"
+          unitId={negociacaoAp.id}
+          title={`Apartamento ${negociacaoAp.ap_id}`}
+          currentValue={negociacaoAp.preco_venda}
+          clientName={negociacaoAp.cliente?.nome}
+          linkedByUserId={negociacaoAp.cliente_vinculado_por}
+          user={user}
+          onClose={() => setNegociacaoAp(null)}
+          onSaved={async (ultimaEtapa) => {
+            if (ultimaEtapa?.valor_novo !== null && ultimaEtapa?.valor_novo !== undefined) {
+              setNegociacaoAp((current) => current ? { ...current, preco_venda: Number(ultimaEtapa.valor_novo) } : current);
+            }
+            await onRefresh?.();
+          }}
+        />
       )}
       {locacaoDialog && (
         <LocacaoDialog

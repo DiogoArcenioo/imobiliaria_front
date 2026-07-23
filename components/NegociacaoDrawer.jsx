@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createEtapa, getEtapas, updateEtapa } from '../lib/api';
+import { createEtapaUnidade, getEtapasUnidade, updateEtapa } from '../lib/api';
 import { fmtBRL } from '../lib/data';
 
 function currencyDraft(value) {
@@ -31,7 +31,19 @@ function historicalValueFor(etapas, index, currentValue) {
   return currentValue;
 }
 
-export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
+export function NegociacaoDrawer({
+  lot,
+  unitType = 'lote',
+  unitId,
+  title,
+  currentValue,
+  clientName,
+  linkedByUserId,
+  user,
+  onClose,
+  onUltimaEtapaChange,
+  onSaved,
+}) {
   const [etapas, setEtapas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -46,24 +58,40 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState(null);
 
+  const resolvedId = unitId ?? lot?.db_id;
+  const resolvedTitle = title ?? (lot ? `Lote ${lot.id}` : 'Imóvel');
+  const resolvedValue = currentValue ?? lot?.preco;
+  const resolvedClientName = clientName ?? lot?.cliente?.nome;
+  const resolvedLinkedBy = linkedByUserId ?? lot?.cliente_vinculado_por;
   const canAddEtapa = user && (
     user.role === 'admin' || user.role === 'gerente' ||
-    user.id === lot?.cliente_vinculado_por
+    user.id === resolvedLinkedBy
   );
 
   useEffect(() => {
-    if (!lot?.db_id) return;
+    if (!resolvedId) return;
+    let active = true;
     setLoading(true);
     setError(null);
-    setNewValueDraft(currencyDraft(lot.preco));
-    getEtapas(lot.db_id)
+    setNewValueDraft(currencyDraft(resolvedValue));
+    getEtapasUnidade(unitType, resolvedId)
       .then((list) => {
+        if (!active) return;
         setEtapas(list);
         notifyUltimaEtapa(list);
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [lot?.db_id]);
+      .catch((e) => { if (active) setError(e.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [resolvedId, unitType]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   function etapaResumo(etapa) {
     if (!etapa) return null;
@@ -77,9 +105,10 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
     };
   }
 
-  function notifyUltimaEtapa(list) {
+  function notifyUltimaEtapa(list, saved = false) {
     const last = list.length > 0 ? list[list.length - 1] : null;
-    onUltimaEtapaChange?.(lot.db_id, lot.loteamento_id, etapaResumo(last));
+    if (lot) onUltimaEtapaChange?.(lot.db_id, lot.loteamento_id, etapaResumo(last));
+    if (saved) onSaved?.(etapaResumo(last), list);
   }
 
   async function handleAdd() {
@@ -87,7 +116,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
     setAddSaving(true);
     setAddError(null);
     try {
-      const created = await createEtapa(lot.db_id, newDraft, parseCurrency(newValueDraft));
+      const created = await createEtapaUnidade(unitType, resolvedId, newDraft, parseCurrency(newValueDraft));
       const newList = [...etapas, created];
       setEtapas(newList);
       if (created.valor_novo !== null && created.valor_novo !== undefined) {
@@ -95,7 +124,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
       }
       setNewDraft('');
       setAdding(false);
-      notifyUltimaEtapa(newList);
+      notifyUltimaEtapa(newList, true);
     } catch (e) {
       setAddError(e.message || 'Erro ao salvar');
     } finally {
@@ -106,7 +135,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
   function startEdit(etapa) {
     setEditingId(etapa.id);
     setEditDraft(etapa.descricao);
-    setEditValueDraft(currencyDraft(etapa.valor_novo ?? lot.preco));
+    setEditValueDraft(currencyDraft(etapa.valor_novo ?? resolvedValue));
     setEditError(null);
   }
 
@@ -124,7 +153,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
       const newList = etapas.map((e) => (e.id === editingId ? updated : e));
       setEtapas(newList);
       setEditingId(null);
-      notifyUltimaEtapa(newList);
+      notifyUltimaEtapa(newList, true);
     } catch (e) {
       setEditError(e.message || 'Erro ao salvar');
     } finally {
@@ -132,7 +161,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
     }
   }
 
-  if (!lot) return null;
+  if (!resolvedId) return null;
 
   return (
     <div className="neg-backdrop" onClick={onClose}>
@@ -140,10 +169,10 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
         <div className="neg-drawer-head">
           <div>
             <div className="neg-drawer-eyebrow">HISTORICO DE NEGOCIACAO</div>
-            <h3 className="neg-drawer-title">Lote {lot.id}</h3>
+            <h3 className="neg-drawer-title">{resolvedTitle}</h3>
             <p className="neg-drawer-sub">
-              {lot.cliente?.nome ? `Cliente: ${lot.cliente.nome} - ` : ''}
-              Valor atual {fmtBRL(lot.preco)}
+              {resolvedClientName ? `Cliente: ${resolvedClientName} - ` : ''}
+              Valor atual {fmtBRL(resolvedValue)}
             </p>
           </div>
           <button className="neg-drawer-close" onClick={onClose} aria-label="Fechar">
@@ -168,7 +197,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
                   etapa={etapa}
                   index={index + 1}
                   isLast={index === etapas.length - 1}
-                  displayValue={historicalValueFor(etapas, index, lot.preco)}
+                  displayValue={historicalValueFor(etapas, index, resolvedValue)}
                   user={user}
                   isEditing={editingId === etapa.id}
                   editDraft={editDraft}
@@ -221,7 +250,7 @@ export function NegociacaoDrawer({ lot, user, onClose, onUltimaEtapaChange }) {
                       onClick={() => {
                         setAdding(false);
                         setNewDraft('');
-                        setNewValueDraft(currencyDraft(lot.preco));
+                        setNewValueDraft(currencyDraft(resolvedValue));
                         setAddError(null);
                       }}
                       disabled={addSaving}

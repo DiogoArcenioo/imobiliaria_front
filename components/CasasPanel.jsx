@@ -15,6 +15,7 @@ import { formatCpfCnpj } from './ClienteManagement';
 import { House3DView } from './House3DView';
 import { LocacaoDialog } from './LocacoesPanel';
 import { SaleDialog } from './SaleDialog';
+import { NegociacaoDrawer } from './NegociacaoDrawer';
 
 const STATUS = {
   disponivel: { label: 'Disponivel', color: '#22c55e' },
@@ -622,8 +623,20 @@ function CasaCard({ casa, canManage, user, onEdit, onDelete, onStatus, onRent, o
         {casa.cliente && (
           <div className="casa-card-client">
             Cliente: <b>{casa.cliente.nome}</b>
-            {canSeeNegociacao && (
-              <button className="casa-neg-link" onClick={() => onNegociacao(casa)}>Ver negociacao</button>
+          </div>
+        )}
+        {canSeeNegociacao && (
+          <div className="lot-neg-preview">
+            <div className="lot-neg-preview-head">
+              <span>Histórico da negociação</span>
+              <button type="button" className="lot-neg-ver-mais" onClick={() => onNegociacao(casa)}>
+                Ver histórico
+              </button>
+            </div>
+            {casa.observacao_reserva ? (
+              <p className="lot-neg-preview-text">{casa.observacao_reserva}</p>
+            ) : (
+              <p className="lot-neg-preview-empty">Abra o histórico para consultar ou adicionar etapas.</p>
             )}
           </div>
         )}
@@ -1065,11 +1078,19 @@ export function CasasPanel({
         />
       )}
       {negociacaoCasa && (
-        <CasaNegociacaoDrawer
-          casa={negociacaoCasa}
+        <NegociacaoDrawer
+          unitType="casa"
+          unitId={negociacaoCasa.id}
+          title={negociacaoCasa.codigo || negociacaoCasa.nome}
+          currentValue={negociacaoCasa.preco_venda}
+          clientName={negociacaoCasa.cliente?.nome}
+          linkedByUserId={negociacaoCasa.cliente_vinculado_por}
           user={user}
           onClose={() => setNegociacaoCasa(null)}
-          onSaved={async () => {
+          onSaved={async (ultimaEtapa) => {
+            if (ultimaEtapa?.valor_novo !== null && ultimaEtapa?.valor_novo !== undefined) {
+              setNegociacaoCasa((current) => current ? { ...current, preco_venda: Number(ultimaEtapa.valor_novo) } : current);
+            }
             await onRefresh?.();
           }}
         />

@@ -212,7 +212,7 @@ function ApartmentImageGallery({ ap, images, canEdit, onChange }) {
   );
 }
 
-export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, onUpdatePrice, onImagesChange, defaultPriceMode = 'm2', user }) {
+export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusChange, onUpdatePrice, onImagesChange, onOpenNegociacao, defaultPriceMode = 'm2', user }) {
   const [actionLoading, setActionLoading] = useState(false);
   const cardRef = useRef(null);
   const initialStyle = position
@@ -271,6 +271,9 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
   const canRent = isAdminOrManager || (user?.role === 'vendedor' && userHasModule(user, 'predios') && userHasModule(user, 'locacoes'));
   const canManage = isAdminOrManager || canSell || canRent;
   const canReserve = user && ['admin', 'gerente', 'vendedor'].includes(user.role);
+  const canSeeNegociacao = ['reservado', 'vendido'].includes(ap.status) && user && (
+    user.role === 'admin' || user.role === 'gerente' || user.id === ap.cliente_vinculado_por
+  );
   const canEditPrice = !!onUpdatePrice && isAdminOrManager && !isLocked;
   const hasSalePrice = Number(ap.preco_venda) > 0 && ['venda', 'ambos'].includes(ap.tipo || 'venda');
   const hasRentPrice = Number(ap.preco_aluguel) > 0 && ['aluguel', 'ambos'].includes(ap.tipo);
@@ -376,6 +379,22 @@ export function ApartmentCard({ ap, andar, predio, onClose, position, onStatusCh
           <section className="apc-note">
             <div className="apc-section-label">OBSERVAÇÃO</div>
             <p>{ap.observacao_reserva}</p>
+          </section>
+        )}
+
+        {canSeeNegociacao && onOpenNegociacao && (
+          <section className="lot-neg-preview apc-neg-preview">
+            <div className="lot-neg-preview-head">
+              <span>Histórico da negociação</span>
+              <button type="button" className="lot-neg-ver-mais" onClick={onOpenNegociacao}>
+                Ver histórico
+              </button>
+            </div>
+            {ap.observacao_reserva ? (
+              <p className="lot-neg-preview-text">{ap.observacao_reserva}</p>
+            ) : (
+              <p className="lot-neg-preview-empty">Abra o histórico para consultar ou adicionar etapas.</p>
+            )}
           </section>
         )}
 
