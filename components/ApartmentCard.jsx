@@ -129,16 +129,33 @@ function ApartmentImageModal({ ap, images, initialIndex, onClose }) {
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   useEffect(() => {
     const onKeyDown = (event) => {
+      if (!['Escape', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
       if (event.key === 'Escape') onClose();
       if (event.key === 'ArrowLeft') setActiveIndex((index) => (index - 1 + images.length) % images.length);
       if (event.key === 'ArrowRight') setActiveIndex((index) => (index + 1) % images.length);
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
   }, [images.length, onClose]);
   if (!images.length || typeof document === 'undefined') return null;
   return createPortal(
-    <div className="lot-gallery-modal" role="dialog" aria-modal="true" onClick={onClose}>
+    <div
+      className="lot-gallery-modal apartment-gallery-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Imagens do apartamento ${ap.ap_id}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClose();
+      }}
+    >
       <div className="lot-gallery-dialog" onClick={(event) => event.stopPropagation()}>
         <div className="lot-gallery-title">
           <div><strong>Apartamento {ap.ap_id}</strong><span>{activeIndex + 1} de {images.length}</span></div>

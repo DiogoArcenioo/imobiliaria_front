@@ -3878,7 +3878,7 @@ button, input, select, textarea { font: inherit; }
 .lot-gallery-modal {
   position: fixed;
   inset: 0;
-  z-index: 3000;
+  z-index: 100000;
   display: flex;
   align-items: center;
   justify-content: center;
